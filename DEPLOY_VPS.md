@@ -6,7 +6,7 @@ Guia passo a passo para rodar o **dashboard e o bot Polymarket** em um VPS Ubunt
 
 ## O que você vai ter no final
 
-- Um site (ex.: `https://seu-dominio.com`) com login e dashboard.
+- Um site (ex.: `https://polybtc5m.duckdns.org`) com login e dashboard.
 - Cada usuário faz login, salva as credenciais da Polymarket na aba Config e clica em **Iniciar** para rodar o bot.
 - **Vários usuários podem ter o bot rodando ao mesmo tempo** — um processo por pessoa; stats e logs são separados por usuário.
 
@@ -233,10 +233,10 @@ server {
 }
 ```
 
-Se tiver **domínio** (ex.: `bot.seudominio.com`), troque `server_name _;` por:
+Se tiver **domínio** (ex.: DuckDNS `polybtc5m.duckdns.org`), troque `server_name _;` por:
 
 ```nginx
-server_name bot.seudominio.com;
+server_name polybtc5m.duckdns.org;
 ```
 
 Ative o site e recarregue o Nginx:
@@ -248,20 +248,20 @@ nginx -t
 systemctl reload nginx
 ```
 
-Acesse `http://SEU_IP` ou `http://bot.seudominio.com`. Deve carregar o dashboard.
+Acesse `http://SEU_IP` ou `http://polybtc5m.duckdns.org`. Deve carregar o dashboard.
 
 ### 8.2 HTTPS com Certbot (recomendado)
 
-Instale o Certbot e gere o certificado (use o domínio que aponta para esta VPS):
+Instale o Certbot e gere o certificado (use o domínio que aponta para esta VPS, ex.: `polybtc5m.duckdns.org`):
 
 ```bash
 apt install -y certbot python3-certbot-nginx
-certbot --nginx -d bot.seudominio.com
+certbot --nginx -d polybtc5m.duckdns.org
 ```
 
 Siga as perguntas (e-mail, aceitar termos). O Certbot altera o Nginx para escutar na porta 443 e usar o certificado. Renovação é automática.
 
-Depois disso, acesse `https://bot.seudominio.com`.
+Depois disso, acesse `https://polybtc5m.duckdns.org`.
 
 ---
 
@@ -318,7 +318,7 @@ nano /etc/nginx/sites-available/polymarket        # conteúdo do Passo 8.1
 ln -sf /etc/nginx/sites-available/polymarket /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
-# HTTPS: certbot --nginx -d bot.seudominio.com
+# HTTPS: certbot --nginx -d polybtc5m.duckdns.org
 ```
 
 ---
