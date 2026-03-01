@@ -12,7 +12,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import requests
 from dotenv import load_dotenv
@@ -128,7 +128,7 @@ def _config_to_supabase(user_id: str, token: str, data: dict, email: Optional[st
             )
             r.raise_for_status()
     except requests.exceptions.HTTPError as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao salvar config: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao salvar config. Tente novamente.")
 
 
 def _safe_user_id(user_id: str) -> str:
@@ -160,7 +160,7 @@ class ConfigUpdate(BaseModel):
     api_passphrase: Optional[str] = None
     starting_bankroll: Optional[float] = None
     min_bet: Optional[float] = None
-    bot_mode: Optional[str] = None
+    bot_mode: Optional[Literal["safe", "aggressive", "degen", "arbitragem"]] = None
     aggressive_bet_pct: Optional[float] = None
     max_token_price: Optional[float] = None
     arb_min_profit_pct: Optional[float] = None
@@ -183,7 +183,7 @@ class ConfigResponse(BaseModel):
 
 
 class BotStartRequest(BaseModel):
-    mode: str = Field(..., description="safe | aggressive | dry_run (dry_run = safe em dry-run)")
+    mode: Literal["safe", "aggressive", "dry_run", "arbitragem"] = Field(..., description="Modo de trading")
     dry_run: bool = Field(False, description="Se True, simula sem ordens reais")
     safe_bet: Optional[float] = None
     aggressive_bet_pct: Optional[float] = None
@@ -281,6 +281,8 @@ def _derive_creds(private_key: str, funder_address: str = "", signature_type: in
 @app.post("/api/derive-creds", response_model=DeriveCredsResponse)
 def derive_creds(req: DeriveCredsRequest):
     """Deriva API key/secret/passphrase a partir da chave privada."""
+    if req.signature_type not in (0, 1, 2):
+        raise HTTPException(status_code=400, detail="signature_type deve ser 0, 1 ou 2")
     try:
         api_key, api_secret, api_passphrase = _derive_creds(
             req.private_key,
@@ -292,8 +294,10 @@ def derive_creds(req: DeriveCredsRequest):
             api_secret=api_secret,
             api_passphrase=api_passphrase,
         )
-    except Exception as e:
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Falha ao derivar credenciais. Verifique a chave e o funder address.")
 
 
 @app.get("/api/config", response_model=ConfigResponse)
@@ -504,7 +508,7 @@ def _parse_trades(period: str, user_id: str) -> list[dict[str, Any]]:
 
 
 @app.get("/api/stats", response_model=StatsResponse)
-def get_stats(period: str = "7d", user: dict = Depends(get_current_user)):
+def get_stats(period: Literal["24h", "7d", "30d"] = "7d", user: dict = Depends(get_current_user)):
     """Estatísticas por período (24h, 7d, 30d) do usuário."""
     trades = _parse_trades(period, user["id"])
     wins = sum(1 for t in trades if t.get("result") == "win")
@@ -527,9 +531,12 @@ def get_stats(period: str = "7d", user: dict = Depends(get_current_user)):
     )
 
 
+MAX_LOG_TAIL = 500
+
 @app.get("/api/logs")
 def get_logs(tail: int = 100, user: dict = Depends(get_current_user)):
     """Últimas linhas do log do bot deste usuário."""
+    tail = max(1, min(int(tail), MAX_LOG_TAIL))
     safe_id = _safe_user_id(user["id"])
     log_path = PROJECT_ROOT / f"resultados_{safe_id}.txt"
     if not log_path.exists():
@@ -558,12 +565,18 @@ def index():
 
 @app.get("/{path:path}")
 def frontend(path: str):
-    f = FRONTEND_DIR / path
-    if f.is_file():
-        return FileResponse(f)
-    if (FRONTEND_DIR / "index.html").exists():
-        return FileResponse(FRONTEND_DIR / "index.html")
-    raise HTTPException(status_code=404, detail="Not found")
+    """Serve arquivos estáticos do frontend; bloqueia path traversal."""
+    base = FRONTEND_DIR.resolve()
+    f = (base / path).resolve()
+    try:
+        f.relative_to(base)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not f.is_file():
+        if (FRONTEND_DIR / "index.html").exists():
+            return FileResponse(FRONTEND_DIR / "index.html", media_type="text/html")
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(f)
 
 
 if __name__ == "__main__":
