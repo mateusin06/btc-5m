@@ -645,9 +645,10 @@
     getEl('btn-autoclaim-on').addEventListener('click', async () => {
       try {
         const r = await fetch(API + '/api/autoclaim/start', { method: 'POST', headers: authHeaders() });
+        const errBody = await r.json().catch(() => ({}));
         if (!r.ok) {
-          const err = await r.json().catch(() => ({}));
-          throw new Error(err.detail || r.statusText);
+          const msg = errBody.detail || (typeof errBody.detail === 'string' ? errBody.detail : r.statusText);
+          throw new Error(Array.isArray(msg) ? msg.join(' ') : msg);
         }
         await refreshAutoclaimStatus();
       } catch (e) {

@@ -514,6 +514,10 @@ def autoclaim_start(user: dict = Depends(get_current_user)):
     """Inicia o auto-claim apenas para este usuário (um processo por usuário)."""
     global _autoclaim_processes, _autoclaim_log_handles
     user_id = user["id"]
+    if isinstance(user_id, str):
+        pass
+    else:
+        user_id = str(user_id)
     _cleanup_user_autoclaim(user_id)
     if user_id in _autoclaim_processes and _autoclaim_processes[user_id].poll() is None:
         raise HTTPException(status_code=400, detail="Auto-claim já está ativo para você. Desative antes de ativar de novo.")
@@ -524,22 +528,36 @@ def autoclaim_start(user: dict = Depends(get_current_user)):
     env["HEADLESS"] = "1"
 
     log_path = PROJECT_ROOT / "data" / f"autoclaim_{safe_id}.txt"
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(log_path, "a", encoding="utf-8") as log_file:
-        log_file.write(f"\n--- Auto-claim iniciado em {datetime.now(timezone.utc).isoformat()} ---\n")
-    stdout_dest = open(log_path, "a", encoding="utf-8")
-    stderr_dest = open(log_path, "a", encoding="utf-8")
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as log_file:
+            log_file.write(f"\n--- Auto-claim iniciado em {datetime.now(timezone.utc).isoformat()} ---\n")
+        stdout_dest = open(log_path, "a", encoding="utf-8")
+        stderr_dest = open(log_path, "a", encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Não foi possível criar o arquivo de log: {e!s}")
+
     _autoclaim_log_handles[user_id] = [stdout_dest, stderr_dest]
 
-    cmd = [sys.executable, str(PROJECT_ROOT / "auto_claim.py")]
-    proc = subprocess.Popen(
-        cmd,
-        cwd=str(PROJECT_ROOT),
-        stdout=stdout_dest,
-        stderr=stderr_dest,
-        env=env,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
-    )
+    try:
+        cmd = [sys.executable, str(PROJECT_ROOT / "auto_claim.py")]
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            stdout=stdout_dest,
+            stderr=stderr_dest,
+            env=env,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        )
+    except Exception as e:
+        for f in [stdout_dest, stderr_dest]:
+            try:
+                f.close()
+            except Exception:
+                pass
+        _autoclaim_log_handles.pop(user_id, None)
+        raise HTTPException(status_code=500, detail=f"Erro ao iniciar o script de auto-claim: {e!s}")
+
     _autoclaim_processes[user_id] = proc
     return {"ok": True, "pid": proc.pid}
 
