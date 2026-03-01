@@ -44,10 +44,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Processo do bot quando rodando pelo dashboard
-_bot_process: Optional[subprocess.Popen] = None
-_bot_log_handles: list = []
-_bot_user_id: Optional[str] = None
+# Um processo do bot por usuário (user_id -> Popen)
+_bot_processes: dict[str, subprocess.Popen] = {}
+_bot_log_handles: dict[str, list] = {}
+
+# Um processo de auto-claim por usuário (user_id -> Popen)
+_autoclaim_processes: dict[str, subprocess.Popen] = {}
+_autoclaim_log_handles: dict[str, list] = {}
+
+
+def _cleanup_user_bot(user_id: str) -> None:
+    """Remove processo morto do usuário e fecha handles de log."""
+    proc = _bot_processes.get(user_id)
+    if proc is not None and proc.poll() is not None:
+        for f in _bot_log_handles.get(user_id, []):
+            try:
+                f.close()
+            except Exception:
+                pass
+        _bot_log_handles.pop(user_id, None)
+        _bot_processes.pop(user_id, None)
+
+
+def _cleanup_user_autoclaim(user_id: str) -> None:
+    """Remove processo morto de autoclaim do usuário e fecha handles de log."""
+    proc = _autoclaim_processes.get(user_id)
+    if proc is not None and proc.poll() is not None:
+        for f in _autoclaim_log_handles.get(user_id, []):
+            try:
+                f.close()
+            except Exception:
+                pass
+        _autoclaim_log_handles.pop(user_id, None)
+        _autoclaim_processes.pop(user_id, None)
 
 
 def _supabase_user_from_token(token: str) -> Optional[dict]:
@@ -195,6 +224,11 @@ class BotStatusResponse(BaseModel):
     pid: Optional[int] = None
     mode: Optional[str] = None
     dry_run: Optional[bool] = None
+
+
+class AutoclaimStatusResponse(BaseModel):
+    running: bool
+    pid: Optional[int] = None
 
 
 class StatsResponse(BaseModel):
@@ -371,10 +405,12 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
 
 @app.post("/api/bot/start")
 def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
-    """Inicia o bot com o modo e parâmetros informados; usa config do Supabase do usuário."""
-    global _bot_process, _bot_log_handles, _bot_user_id
-    if _bot_process is not None and _bot_process.poll() is None:
-        raise HTTPException(status_code=400, detail="Bot já está rodando (apenas um por vez no servidor)")
+    """Inicia o bot com o modo e parâmetros informados; usa config do Supabase do usuário. Um bot por usuário."""
+    global _bot_processes, _bot_log_handles
+    user_id = user["id"]
+    _cleanup_user_bot(user_id)
+    if user_id in _bot_processes and _bot_processes[user_id].poll() is None:
+        raise HTTPException(status_code=400, detail="Seu bot já está rodando. Pare antes de iniciar de novo.")
 
     mode = "safe" if req.mode == "dry_run" else req.mode
     dry_run = req.dry_run or (req.mode == "dry_run")
@@ -419,9 +455,9 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         log_file.write(f"\n--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode} dry_run={dry_run} ---\n")
     stdout_dest = open(log_path, "a", encoding="utf-8")
     stderr_dest = open(log_path, "a", encoding="utf-8")
-    _bot_log_handles.extend([stdout_dest, stderr_dest])
+    _bot_log_handles[user_id] = [stdout_dest, stderr_dest]
 
-    _bot_process = subprocess.Popen(
+    proc = subprocess.Popen(
         cmd,
         cwd=str(PROJECT_ROOT),
         stdout=stdout_dest,
@@ -429,48 +465,120 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         env=env,
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
     )
-    _bot_user_id = user["id"]
-    return {"ok": True, "pid": _bot_process.pid, "mode": mode, "dry_run": dry_run}
+    _bot_processes[user_id] = proc
+    return {"ok": True, "pid": proc.pid, "mode": mode, "dry_run": dry_run}
 
 
 @app.post("/api/bot/stop")
 def bot_stop(user: dict = Depends(get_current_user)):
-    """Para o bot se estiver rodando (apenas o usuário que iniciou pode parar)."""
-    global _bot_process, _bot_log_handles, _bot_user_id
-    if _bot_process is None:
+    """Para o bot deste usuário se estiver rodando."""
+    global _bot_processes, _bot_log_handles
+    user_id = user["id"]
+    proc = _bot_processes.get(user_id)
+    if proc is None:
         return {"ok": True, "message": "Bot não estava rodando"}
-    if _bot_user_id and _bot_user_id != user["id"]:
-        raise HTTPException(status_code=403, detail="Apenas o usuário que iniciou o bot pode pará-lo.")
     try:
-        _bot_process.terminate()
-        _bot_process.wait(timeout=10)
+        proc.terminate()
+        proc.wait(timeout=10)
     except Exception:
         try:
-            _bot_process.kill()
+            proc.kill()
         except Exception:
             pass
-    for f in _bot_log_handles:
+    for f in _bot_log_handles.get(user_id, []):
         try:
             f.close()
         except Exception:
             pass
-    _bot_log_handles.clear()
-    _bot_process = None
-    _bot_user_id = None
+    _bot_log_handles.pop(user_id, None)
+    _bot_processes.pop(user_id, None)
     return {"ok": True}
 
 
 @app.get("/api/bot/status", response_model=BotStatusResponse)
 def bot_status(user: dict = Depends(get_current_user)):
     """Retorna se o bot deste usuário está rodando."""
-    if _bot_process is None or _bot_process.poll() is not None:
-        return BotStatusResponse(running=False)
-    if _bot_user_id != user["id"]:
+    user_id = user["id"]
+    _cleanup_user_bot(user_id)
+    proc = _bot_processes.get(user_id)
+    if proc is None or proc.poll() is not None:
         return BotStatusResponse(running=False)
     return BotStatusResponse(
         running=True,
-        pid=_bot_process.pid,
+        pid=proc.pid,
     )
+
+
+@app.post("/api/autoclaim/start")
+def autoclaim_start(user: dict = Depends(get_current_user)):
+    """Inicia o auto-claim apenas para este usuário (um processo por usuário)."""
+    global _autoclaim_processes, _autoclaim_log_handles
+    user_id = user["id"]
+    _cleanup_user_autoclaim(user_id)
+    if user_id in _autoclaim_processes and _autoclaim_processes[user_id].poll() is None:
+        raise HTTPException(status_code=400, detail="Auto-claim já está ativo para você. Desative antes de ativar de novo.")
+
+    safe_id = _safe_user_id(user_id)
+    env = os.environ.copy()
+    env["BOT_USER_ID"] = safe_id
+    env["HEADLESS"] = "1"
+
+    log_path = PROJECT_ROOT / "data" / f"autoclaim_{safe_id}.txt"
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as log_file:
+        log_file.write(f"\n--- Auto-claim iniciado em {datetime.now(timezone.utc).isoformat()} ---\n")
+    stdout_dest = open(log_path, "a", encoding="utf-8")
+    stderr_dest = open(log_path, "a", encoding="utf-8")
+    _autoclaim_log_handles[user_id] = [stdout_dest, stderr_dest]
+
+    cmd = [sys.executable, str(PROJECT_ROOT / "auto_claim.py")]
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(PROJECT_ROOT),
+        stdout=stdout_dest,
+        stderr=stderr_dest,
+        env=env,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+    )
+    _autoclaim_processes[user_id] = proc
+    return {"ok": True, "pid": proc.pid}
+
+
+@app.post("/api/autoclaim/stop")
+def autoclaim_stop(user: dict = Depends(get_current_user)):
+    """Para o auto-claim deste usuário."""
+    global _autoclaim_processes, _autoclaim_log_handles
+    user_id = user["id"]
+    proc = _autoclaim_processes.get(user_id)
+    if proc is None:
+        return {"ok": True, "message": "Auto-claim não estava ativo"}
+    try:
+        proc.terminate()
+        proc.wait(timeout=10)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    for f in _autoclaim_log_handles.get(user_id, []):
+        try:
+            f.close()
+        except Exception:
+            pass
+    _autoclaim_log_handles.pop(user_id, None)
+    _autoclaim_processes.pop(user_id, None)
+    return {"ok": True}
+
+
+@app.get("/api/autoclaim/status", response_model=AutoclaimStatusResponse)
+def autoclaim_status(user: dict = Depends(get_current_user)):
+    """Retorna se o auto-claim deste usuário está ativo."""
+    user_id = user["id"]
+    _cleanup_user_autoclaim(user_id)
+    proc = _autoclaim_processes.get(user_id)
+    if proc is None or proc.poll() is not None:
+        return AutoclaimStatusResponse(running=False)
+    return AutoclaimStatusResponse(running=True, pid=proc.pid)
 
 
 def _parse_trades(period: str, user_id: str) -> list[dict[str, Any]]:

@@ -210,6 +210,19 @@
           </div>
         </div>
       </div>
+
+      <div class="bg-panel rounded-xl border border-border p-6">
+        <h2 class="text-lg font-semibold text-white mb-2">Auto-claim</h2>
+        <p class="text-sm text-muted mb-4">Ativa um script que verifica a cada 60s se há posições para dar claim na Polymarket (portfolio). Roda em segundo plano só para você.</p>
+        <div id="autoclaim-status" class="mb-4 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-gray-500" id="autoclaim-dot"></span>
+          <span id="autoclaim-text">Verificando...</span>
+        </div>
+        <div class="flex gap-3">
+          <button type="button" id="btn-autoclaim-on" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Ativar autoclaim</button>
+          <button type="button" id="btn-autoclaim-off" class="px-4 py-2 bg-[#2d333b] text-white font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Desativar autoclaim</button>
+        </div>
+      </div>
     </section>
 
     <!-- Tab: Stats -->
@@ -297,7 +310,9 @@
           refreshBotStatus();
           loadStats();
           loadLogs();
+          refreshAutoclaimStatus();
           setInterval(refreshBotStatus, 5000);
+          setInterval(refreshAutoclaimStatus, 5000);
         } else {
           getEl('auth-screen').classList.remove('hidden');
           getEl('dashboard').classList.add('hidden');
@@ -340,6 +355,7 @@
       refreshBotStatus();
       loadStats();
       loadLogs();
+      refreshAutoclaimStatus();
     });
 
     getEl('btn-signup').addEventListener('click', async () => {
@@ -376,6 +392,7 @@
         refreshBotStatus();
         loadStats();
         loadLogs();
+        refreshAutoclaimStatus();
       } else {
         getEl('auth-error').textContent = 'Conta criada. Verifique seu e-mail para confirmar (ou faça login se já estiver ativo).';
         getEl('auth-error').classList.remove('hidden');
@@ -594,6 +611,54 @@
       try {
         await fetch(API + '/api/bot/stop', { method: 'POST', headers: authHeaders() });
         await refreshBotStatus();
+      } catch (e) {
+        alert('Erro: ' + e.message);
+      }
+    });
+
+    // --- Auto-claim status
+    async function refreshAutoclaimStatus() {
+      try {
+        const r = await fetch(API + '/api/autoclaim/status', { headers: authHeaders() });
+        if (r.status === 401) return;
+        const s = await r.json();
+        const dot = getEl('autoclaim-dot');
+        const text = getEl('autoclaim-text');
+        if (s.running) {
+          dot.classList.remove('bg-gray-500');
+          dot.classList.add('bg-accent');
+          text.textContent = 'Auto-claim ativo (PID ' + (s.pid || '?') + ')';
+          getEl('btn-autoclaim-on').disabled = true;
+          getEl('btn-autoclaim-off').disabled = false;
+        } else {
+          dot.classList.remove('bg-accent');
+          dot.classList.add('bg-gray-500');
+          text.textContent = 'Auto-claim desativado';
+          getEl('btn-autoclaim-on').disabled = false;
+          getEl('btn-autoclaim-off').disabled = true;
+        }
+      } catch (e) {
+        getEl('autoclaim-text').textContent = 'Erro ao verificar status';
+      }
+    }
+
+    getEl('btn-autoclaim-on').addEventListener('click', async () => {
+      try {
+        const r = await fetch(API + '/api/autoclaim/start', { method: 'POST', headers: authHeaders() });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail || r.statusText);
+        }
+        await refreshAutoclaimStatus();
+      } catch (e) {
+        alert('Erro: ' + e.message);
+      }
+    });
+
+    getEl('btn-autoclaim-off').addEventListener('click', async () => {
+      try {
+        await fetch(API + '/api/autoclaim/stop', { method: 'POST', headers: authHeaders() });
+        await refreshAutoclaimStatus();
       } catch (e) {
         alert('Erro: ' + e.message);
       }
