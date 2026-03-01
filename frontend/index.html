@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polymarket Bot — Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Outfit', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+          colors: {
+            panel: '#1a1d24',
+            border: '#2d333b',
+            accent: '#22c55e',
+            danger: '#ef4444',
+            muted: '#6b7280',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Outfit', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .tab-active { border-bottom: 2px solid #22c55e; color: #22c55e; }
+  </style>
+</head>
+<body class="bg-[#0f1116] text-gray-200 min-h-screen">
+  <!-- Tela de Login / Cadastro (visível por padrão até o init carregar) -->
+  <div id="auth-screen" class="max-w-md mx-auto px-4 py-16">
+    <div class="bg-panel rounded-xl border border-border p-8">
+      <h1 class="text-2xl font-bold text-white mb-2">Polymarket Bot</h1>
+      <p class="text-gray-400 text-sm mb-6">Entre ou crie uma conta para acessar sua config e o bot.</p>
+      <div id="auth-error" class="hidden text-danger text-sm mb-4"></div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">E-mail</label>
+          <input type="email" id="auth-email" placeholder="seu@email.com" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Senha</label>
+          <input type="password" id="auth-password" placeholder="••••••••" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+        </div>
+        <div class="flex gap-3">
+          <button type="button" id="btn-login" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90">Entrar</button>
+          <button type="button" id="btn-signup" class="px-4 py-2 bg-[#2d333b] text-white font-medium rounded-lg hover:opacity-90">Criar conta</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard (após login) -->
+  <div id="dashboard" class="hidden max-w-5xl mx-auto px-4 py-8">
+  <div class="flex justify-between items-center mb-10">
+    <div>
+      <h1 class="text-3xl font-bold text-white tracking-tight">Polymarket Bot</h1>
+      <p class="text-gray-400 mt-1">Dashboard — config, modos e estatísticas</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="user-email" class="text-sm text-gray-400"></span>
+      <button type="button" id="btn-logout" class="px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-panel">Sair</button>
+    </div>
+  </div>
+
+    <!-- Tabs -->
+    <nav class="flex gap-6 border-b border-[#2d333b] mb-8">
+      <button type="button" data-tab="config" class="tab pb-3 px-1 text-gray-400 hover:text-white tab-active">Config & API</button>
+      <button type="button" data-tab="bot" class="tab pb-3 px-1 text-gray-400 hover:text-white">Iniciar bot</button>
+      <button type="button" data-tab="stats" class="tab pb-3 px-1 text-gray-400 hover:text-white">Estatísticas</button>
+      <button type="button" data-tab="logs" class="tab pb-3 px-1 text-gray-400 hover:text-white">Log</button>
+    </nav>
+
+    <!-- Tab: Config & API -->
+    <section id="section-config" class="space-y-8">
+      <div class="bg-panel rounded-xl border border-border p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Credenciais Polymarket</h2>
+        <p class="text-sm text-muted mb-4">Informe a <strong class="text-gray-300">chave privada da MetaMask</strong> (private key) e o <strong class="text-gray-300">Funder Address</strong> — que é o endereço da carteira do seu Portfolio na Polymarket (não confundir com o endereço que aparece na MetaMask). Depois clique em &quot;Gerar API&quot; e em &quot;Salvar config&quot;.</p>
+        <div class="mb-4">
+          <button type="button" id="btn-toggle-tutorial" class="text-sm text-accent hover:underline focus:outline-none">Exibir mini tutorial (como pegar a chave privada da MetaMask)</button>
+          <div id="tutorial-private-key" class="hidden mt-3 p-4 rounded-lg bg-[#0f1116] border border-border text-sm text-gray-300 space-y-2">
+            <p class="font-medium text-gray-200">Como exportar a Private Key da MetaMask:</p>
+            <ol class="list-decimal list-inside space-y-1 ml-1">
+              <li>Abra a extensão MetaMask no navegador.</li>
+              <li>Clique nos três traços (menu) no canto superior direito.</li>
+              <li>Vá em <strong>Detalhes da conta</strong> (ou &quot;Account details&quot;).</li>
+              <li>Clique em <strong>Exportar chave privada</strong> (&quot;Export private key&quot;).</li>
+              <li>Digite sua senha da MetaMask e confirme.</li>
+              <li>Copie a chave (começa com 0x) e cole no campo abaixo. <span class="text-muted">Nunca compartilhe essa chave com ninguém.</span></li>
+            </ol>
+          </div>
+        </div>
+        <div class="grid gap-4 max-w-xl">
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Chave privada (MetaMask — private key)</label>
+            <input type="password" id="input-private-key" placeholder="0x..." class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2 font-mono text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Funder Address (carteira do Portfolio na Polymarket)</label>
+            <p class="text-xs text-muted mb-1">Na Polymarket: vá em Portfolio e use &quot;Copy address&quot; — é esse endereço.</p>
+            <input type="text" id="input-funder" placeholder="0x..." class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2 font-mono text-sm" />
+          </div>
+          <div class="flex gap-3">
+            <button type="button" id="btn-derive" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90">Gerar API</button>
+            <span id="derive-status" class="text-sm text-muted self-center"></span>
+          </div>
+          <div id="creds-out" class="hidden space-y-2 rounded-lg bg-[#0f1116] p-3 border border-border">
+            <div class="flex justify-between items-center gap-2">
+              <span class="text-sm text-gray-400">API Key</span>
+              <button type="button" data-copy="api_key" class="text-xs text-accent hover:underline">Copiar</button>
+            </div>
+            <code id="out-api-key" class="block font-mono text-xs break-all"></code>
+            <div class="flex justify-between items-center gap-2">
+              <span class="text-sm text-gray-400">API Secret</span>
+              <button type="button" data-copy="api_secret" class="text-xs text-accent hover:underline">Copiar</button>
+            </div>
+            <code id="out-api-secret" class="block font-mono text-xs break-all"></code>
+            <div class="flex justify-between items-center gap-2">
+              <span class="text-sm text-gray-400">API Passphrase</span>
+              <button type="button" data-copy="api_passphrase" class="text-xs text-accent hover:underline">Copiar</button>
+            </div>
+            <code id="out-api-passphrase" class="block font-mono text-xs break-all"></code>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-panel rounded-xl border border-border p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Parâmetros do bot</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Bankroll inicial (USD)</label>
+            <input type="number" id="cfg-bankroll" step="0.01" min="0" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Aposta mínima (USD)</label>
+            <input type="number" id="cfg-min-bet" step="0.01" min="0" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Aposta Safe (USD) — valor fixo por entrada</label>
+            <input type="number" id="cfg-safe-bet" step="0.01" min="0" placeholder="ex: 5" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Agressivo — % da banca</label>
+            <input type="number" id="cfg-aggressive-pct" min="1" max="100" placeholder="25" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Arbitragem — % da banca</label>
+            <input type="number" id="cfg-arbitragem-pct" min="1" max="100" placeholder="25" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Preço máx. token (ex: 0.90)</label>
+            <input type="number" id="cfg-max-token" step="0.01" min="0" max="1" placeholder="0.90" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Arb — lucro mín. % (ex: 4 = 4%)</label>
+            <input type="number" id="cfg-arb-min-pct" step="0.5" min="0" placeholder="4" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+        </div>
+        <div class="mt-4">
+          <button type="button" id="btn-save-config" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90">Salvar config</button>
+          <span id="save-config-status" class="ml-3 text-sm text-muted"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab: Bot -->
+    <section id="section-bot" class="hidden space-y-6">
+      <div class="bg-panel rounded-xl border border-border p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Iniciar / Parar bot</h2>
+        <div id="bot-status" class="mb-4 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-gray-500" id="status-dot"></span>
+          <span id="status-text">Verificando...</span>
+        </div>
+        <div class="grid gap-4 max-w-md">
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Modo</label>
+            <select id="bot-mode" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2">
+              <option value="safe">Safe — aposta fixa em USD</option>
+              <option value="aggressive">Agressivo — % da banca</option>
+              <option value="dry_run">Dry run — simulação (sem ordens reais)</option>
+              <option value="arbitragem">Arbitragem — % da banca</option>
+            </select>
+          </div>
+          <div id="wrap-safe-bet" class="hidden">
+            <label class="block text-sm text-gray-400 mb-1">Aposta Safe (USD)</label>
+            <input type="number" id="bot-safe-bet" step="0.01" min="0" placeholder="5" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div id="wrap-aggressive-pct" class="hidden">
+            <label class="block text-sm text-gray-400 mb-1">% da banca (Agressivo)</label>
+            <input type="number" id="bot-aggressive-pct" min="1" max="100" placeholder="25" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div id="wrap-arbitragem-pct" class="hidden">
+            <label class="block text-sm text-gray-400 mb-1">% da banca (Arbitragem)</label>
+            <input type="number" id="bot-arbitragem-pct" min="1" max="100" placeholder="25" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div id="wrap-dry-run" class="hidden">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="bot-dry-run" class="rounded border-border" />
+              <span class="text-sm">Dry run (simular sem ordens reais)</span>
+            </label>
+          </div>
+          <div class="flex gap-3">
+            <button type="button" id="btn-bot-start" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Iniciar</button>
+            <button type="button" id="btn-bot-stop" class="px-4 py-2 bg-danger text-white font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Parar</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab: Stats -->
+    <section id="section-stats" class="hidden">
+      <div class="bg-panel rounded-xl border border-border p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Estatísticas por período</h2>
+        <div class="flex gap-2 mb-6">
+          <button type="button" data-period="24h" class="stats-period px-3 py-1.5 rounded-lg bg-[#0f1116] border border-border text-sm hover:border-accent">24h</button>
+          <button type="button" data-period="7d" class="stats-period px-3 py-1.5 rounded-lg bg-accent/20 border border-accent text-accent text-sm">7d</button>
+          <button type="button" data-period="30d" class="stats-period px-3 py-1.5 rounded-lg bg-[#0f1116] border border-border text-sm hover:border-accent">30d</button>
+        </div>
+        <div id="stats-placeholder" class="text-muted">Carregando...</div>
+        <div id="stats-cards" class="grid grid-cols-2 sm:grid-cols-3 gap-4 hidden">
+          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
+            <div class="text-sm text-gray-400">Trades</div>
+            <div id="stat-trades" class="text-xl font-semibold text-white">0</div>
+          </div>
+          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
+            <div class="text-sm text-gray-400">Vitórias</div>
+            <div id="stat-wins" class="text-xl font-semibold text-accent">0</div>
+          </div>
+          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
+            <div class="text-sm text-gray-400">Derrotas</div>
+            <div id="stat-losses" class="text-xl font-semibold text-danger">0</div>
+          </div>
+          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
+            <div class="text-sm text-gray-400">Arbs</div>
+            <div id="stat-arbs" class="text-xl font-semibold text-white">0</div>
+          </div>
+          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
+            <div class="text-sm text-gray-400">PnL total</div>
+            <div id="stat-pnl" class="text-xl font-semibold">$0.00</div>
+          </div>
+          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
+            <div class="text-sm text-gray-400">Win rate</div>
+            <div id="stat-winrate" class="text-xl font-semibold text-white">—</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab: Logs -->
+    <section id="section-logs" class="hidden">
+      <div class="bg-panel rounded-xl border border-border p-6">
+        <h2 class="text-lg font-semibold text-white mb-4">Últimas linhas do log</h2>
+        <pre id="log-content" class="bg-[#0f1116] rounded-lg border border-border p-4 overflow-auto max-h-[400px] font-mono text-xs text-gray-300 whitespace-pre-wrap"></pre>
+        <button type="button" id="btn-refresh-logs" class="mt-2 text-sm text-accent hover:underline">Atualizar</button>
+      </div>
+    </section>
+    </section>
+  </div>
+  <!-- fim dashboard -->
+
+  <script>
+    const API = window.location.origin;
+    let supabaseClient = null;
+    let session = null;
+
+    function getEl(id) { return document.getElementById(id); }
+
+    function authHeaders() {
+      if (!session || !session.access_token) return {};
+      return { 'Authorization': 'Bearer ' + session.access_token };
+    }
+
+    async function initSupabase() {
+      try {
+        const r = await fetch(API + '/api/public-config');
+        if (!r.ok) throw new Error('Servidor respondeu com ' + r.status);
+        const c = await r.json();
+        if (!c.supabase_url || !c.supabase_anon_key) throw new Error('Config da API inválida');
+        supabaseClient = window.supabase.createClient(c.supabase_url, c.supabase_anon_key);
+        supabaseClient.auth.onAuthStateChange((event, s) => {
+          if (event === 'SIGNED_OUT') session = null;
+          else if (s) session = s;
+        });
+        const { data: { session: s } } = await supabaseClient.auth.getSession();
+        session = s;
+        if (session) {
+          getEl('auth-screen').classList.add('hidden');
+          getEl('dashboard').classList.remove('hidden');
+          getEl('user-email').textContent = session.user?.email || '';
+          getEl('auth-error').classList.add('hidden');
+          loadConfig();
+          refreshBotStatus();
+          loadStats();
+          loadLogs();
+          setInterval(refreshBotStatus, 5000);
+        } else {
+          getEl('auth-screen').classList.remove('hidden');
+          getEl('dashboard').classList.add('hidden');
+          getEl('auth-error').classList.add('hidden');
+        }
+      } catch (e) {
+        getEl('auth-screen').classList.remove('hidden');
+        getEl('dashboard').classList.add('hidden');
+        const errEl = getEl('auth-error');
+        errEl.textContent = 'Não foi possível conectar ao servidor. Verifique se o backend está rodando (python web.py). ' + (e.message || '');
+        errEl.classList.remove('hidden');
+      }
+    }
+
+    getEl('btn-login').addEventListener('click', async () => {
+      const email = getEl('auth-email').value.trim();
+      const password = getEl('auth-password').value;
+      getEl('auth-error').classList.add('hidden');
+      if (!supabaseClient) {
+        getEl('auth-error').textContent = 'Conexão não pronta. Recarregue a página e tente de novo.';
+        getEl('auth-error').classList.remove('hidden');
+        return;
+      }
+      if (!email || !password) {
+        getEl('auth-error').textContent = 'Preencha e-mail e senha.';
+        getEl('auth-error').classList.remove('hidden');
+        return;
+      }
+      const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (error) {
+        getEl('auth-error').textContent = error.message || 'Erro ao entrar.';
+        getEl('auth-error').classList.remove('hidden');
+        return;
+      }
+      session = data.session;
+      getEl('auth-screen').classList.add('hidden');
+      getEl('dashboard').classList.remove('hidden');
+      getEl('user-email').textContent = session.user?.email || '';
+      loadConfig();
+      refreshBotStatus();
+      loadStats();
+      loadLogs();
+    });
+
+    getEl('btn-signup').addEventListener('click', async () => {
+      const email = getEl('auth-email').value.trim();
+      const password = getEl('auth-password').value;
+      getEl('auth-error').classList.add('hidden');
+      if (!supabaseClient) {
+        getEl('auth-error').textContent = 'Conexão não pronta. Recarregue a página e tente de novo.';
+        getEl('auth-error').classList.remove('hidden');
+        return;
+      }
+      if (!email || !password) {
+        getEl('auth-error').textContent = 'Preencha e-mail e senha.';
+        getEl('auth-error').classList.remove('hidden');
+        return;
+      }
+      if (password.length < 6) {
+        getEl('auth-error').textContent = 'Senha deve ter pelo menos 6 caracteres.';
+        getEl('auth-error').classList.remove('hidden');
+        return;
+      }
+      const { data, error } = await supabaseClient.auth.signUp({ email, password });
+      if (error) {
+        getEl('auth-error').textContent = error.message || 'Erro ao criar conta.';
+        getEl('auth-error').classList.remove('hidden');
+        return;
+      }
+      if (data.session) {
+        session = data.session;
+        getEl('auth-screen').classList.add('hidden');
+        getEl('dashboard').classList.remove('hidden');
+        getEl('user-email').textContent = session.user?.email || '';
+        loadConfig();
+        refreshBotStatus();
+        loadStats();
+        loadLogs();
+      } else {
+        getEl('auth-error').textContent = 'Conta criada. Verifique seu e-mail para confirmar (ou faça login se já estiver ativo).';
+        getEl('auth-error').classList.remove('hidden');
+      }
+    });
+
+    getEl('btn-logout').addEventListener('click', async () => {
+      if (supabaseClient) await supabaseClient.auth.signOut();
+      session = null;
+      getEl('dashboard').classList.add('hidden');
+      getEl('auth-screen').classList.remove('hidden');
+    });
+
+    function showSection(name) {
+      ['config','bot','stats','logs'].forEach(t => {
+        const s = getEl('section-' + t);
+        if (s) s.classList.toggle('hidden', t !== name);
+      });
+      document.querySelectorAll('.tab').forEach((el, i) => {
+        const isActive = el.dataset.tab === name;
+        el.classList.toggle('tab-active', isActive);
+        el.classList.toggle('text-gray-400', !isActive);
+        el.classList.toggle('text-white', isActive);
+      });
+    }
+
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => showSection(btn.dataset.tab));
+    });
+
+    getEl('btn-toggle-tutorial').addEventListener('click', () => {
+      const el = getEl('tutorial-private-key');
+      const btn = getEl('btn-toggle-tutorial');
+      el.classList.toggle('hidden');
+      btn.textContent = el.classList.contains('hidden')
+        ? 'Exibir mini tutorial (como pegar a chave privada da MetaMask)'
+        : 'Ocultar mini tutorial';
+    });
+
+    // --- Config: load
+    async function loadConfig() {
+      try {
+        const r = await fetch(API + '/api/config', { headers: authHeaders() });
+        if (r.status === 401) { window.location.reload(); return; }
+        const c = await r.json();
+        getEl('input-funder').value = c.funder_address || '';
+        getEl('cfg-bankroll').value = c.starting_bankroll ?? 10;
+        getEl('cfg-min-bet').value = c.min_bet ?? 5;
+        getEl('cfg-aggressive-pct').value = c.aggressive_bet_pct ?? 25;
+        getEl('cfg-max-token').value = c.max_token_price ?? 0.9;
+        getEl('cfg-arb-min-pct').value = ((c.arb_min_profit_pct ?? 0.04) * 100);
+        if (c.safe_bet != null) getEl('cfg-safe-bet').value = c.safe_bet;
+        if (c.arbitragem_pct != null) getEl('cfg-arbitragem-pct').value = c.arbitragem_pct;
+        if (c.safe_bet != null) getEl('bot-safe-bet').value = c.safe_bet;
+        if (c.arbitragem_pct != null) getEl('bot-arbitragem-pct').value = c.arbitragem_pct;
+        if (c.aggressive_bet_pct != null) getEl('bot-aggressive-pct').value = c.aggressive_bet_pct;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // --- Derive API
+    getEl('btn-derive').addEventListener('click', async () => {
+      const key = getEl('input-private-key').value.trim();
+      const funder = getEl('input-funder').value.trim();
+      const status = getEl('derive-status');
+      if (!key || key === '0x...') {
+        status.textContent = 'Informe a chave privada.';
+        return;
+      }
+      status.textContent = 'Gerando...';
+      try {
+        const r = await fetch(API + '/api/derive-creds', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ private_key: key, funder_address: funder, signature_type: 1 })
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail || r.statusText);
+        }
+        const creds = await r.json();
+        getEl('out-api-key').textContent = creds.api_key;
+        getEl('out-api-secret').textContent = creds.api_secret;
+        getEl('out-api-passphrase').textContent = creds.api_passphrase;
+        getEl('creds-out').classList.remove('hidden');
+        status.textContent = 'Gerado. Copie e clique em Salvar config.';
+        window._lastCreds = creds;
+      } catch (e) {
+        status.textContent = 'Erro: ' + e.message;
+      }
+    });
+
+    document.querySelectorAll('[data-copy]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = 'out-' + btn.dataset.copy.replace('_', '-');
+        const el = getEl(id);
+        if (el) {
+          navigator.clipboard.writeText(el.textContent);
+          btn.textContent = 'Copiado!';
+          setTimeout(() => { btn.textContent = 'Copiar'; }, 1500);
+        }
+      });
+    });
+
+    // --- Save config
+    getEl('btn-save-config').addEventListener('click', async () => {
+      const status = getEl('save-config-status');
+      const payload = {
+        funder_address: getEl('input-funder').value.trim(),
+        starting_bankroll: parseFloat(getEl('cfg-bankroll').value) || 10,
+        min_bet: parseFloat(getEl('cfg-min-bet').value) || 5,
+        aggressive_bet_pct: parseFloat(getEl('cfg-aggressive-pct').value) || 25,
+        max_token_price: parseFloat(getEl('cfg-max-token').value) || 0.9,
+        arb_min_profit_pct: (parseFloat(getEl('cfg-arb-min-pct').value) || 4) / 100
+      };
+      const key = getEl('input-private-key').value.trim();
+      if (key && key !== '0x...') payload.private_key = key;
+      if (window._lastCreds) {
+        payload.api_key = window._lastCreds.api_key;
+        payload.api_secret = window._lastCreds.api_secret;
+        payload.api_passphrase = window._lastCreds.api_passphrase;
+      }
+      const safeBet = parseFloat(getEl('cfg-safe-bet').value);
+      if (!isNaN(safeBet) && safeBet > 0) payload.safe_bet = safeBet;
+      const arbPct = parseFloat(getEl('cfg-arbitragem-pct').value);
+      if (!isNaN(arbPct) && arbPct > 0) payload.arbitragem_pct = arbPct;
+      try {
+        const r = await fetch(API + '/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify(payload)
+        });
+        if (!r.ok) throw new Error(await r.text());
+        status.textContent = 'Salvo.';
+        setTimeout(() => { status.textContent = ''; }, 3000);
+      } catch (e) {
+        status.textContent = 'Erro: ' + e.message;
+      }
+    });
+
+    // --- Bot mode visibility
+    const botMode = getEl('bot-mode');
+    function updateBotModeUi() {
+      const v = botMode.value;
+      getEl('wrap-safe-bet').classList.toggle('hidden', v !== 'safe');
+      getEl('wrap-aggressive-pct').classList.toggle('hidden', v !== 'aggressive');
+      getEl('wrap-arbitragem-pct').classList.toggle('hidden', v !== 'arbitragem');
+      getEl('wrap-dry-run').classList.toggle('hidden', v !== 'dry_run');
+    }
+    botMode.addEventListener('change', updateBotModeUi);
+    updateBotModeUi();
+
+    // --- Bot status
+    async function refreshBotStatus() {
+      try {
+        const r = await fetch(API + '/api/bot/status', { headers: authHeaders() });
+        if (r.status === 401) { window.location.reload(); return; }
+        const s = await r.json();
+        const dot = getEl('status-dot');
+        const text = getEl('status-text');
+        if (s.running) {
+          dot.classList.remove('bg-gray-500');
+          dot.classList.add('bg-accent');
+          text.textContent = 'Rodando (PID ' + (s.pid || '?') + ')';
+          getEl('btn-bot-start').disabled = true;
+          getEl('btn-bot-stop').disabled = false;
+        } else {
+          dot.classList.remove('bg-accent');
+          dot.classList.add('bg-gray-500');
+          text.textContent = 'Parado';
+          getEl('btn-bot-start').disabled = false;
+          getEl('btn-bot-stop').disabled = true;
+        }
+      } catch (e) {
+        getEl('status-text').textContent = 'Erro ao verificar status';
+      }
+    }
+
+    getEl('btn-bot-start').addEventListener('click', async () => {
+      const mode = getEl('bot-mode').value;
+      const dryRun = getEl('bot-dry-run').checked;
+      const body = {
+        mode: mode === 'dry_run' ? 'dry_run' : mode,
+        dry_run: mode === 'dry_run' || dryRun
+      };
+      if (mode === 'safe') {
+        const v = parseFloat(getEl('bot-safe-bet').value);
+        if (!isNaN(v)) body.safe_bet = v;
+      }
+      if (mode === 'aggressive') {
+        const v = parseFloat(getEl('bot-aggressive-pct').value);
+        if (!isNaN(v)) body.aggressive_bet_pct = v;
+      }
+      if (mode === 'arbitragem') {
+        const v = parseFloat(getEl('bot-arbitragem-pct').value);
+        if (!isNaN(v)) body.arbitragem_pct = v;
+      }
+      try {
+        const r = await fetch(API + '/api/bot/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify(body)
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail || r.statusText);
+        }
+        await refreshBotStatus();
+      } catch (e) {
+        alert('Erro: ' + e.message);
+      }
+    });
+
+    getEl('btn-bot-stop').addEventListener('click', async () => {
+      try {
+        await fetch(API + '/api/bot/stop', { method: 'POST', headers: authHeaders() });
+        await refreshBotStatus();
+      } catch (e) {
+        alert('Erro: ' + e.message);
+      }
+    });
+
+    // --- Stats
+    let currentPeriod = '7d';
+    async function loadStats() {
+      getEl('stats-placeholder').classList.remove('hidden');
+      getEl('stats-cards').classList.add('hidden');
+      try {
+        const r = await fetch(API + '/api/stats?period=' + currentPeriod, { headers: authHeaders() });
+        if (r.status === 401) { window.location.reload(); return; }
+        const s = await r.json();
+        getEl('stats-placeholder').classList.add('hidden');
+        getEl('stats-cards').classList.remove('hidden');
+        getEl('stat-trades').textContent = s.trades;
+        getEl('stat-wins').textContent = s.wins;
+        getEl('stat-losses').textContent = s.losses;
+        getEl('stat-arbs').textContent = s.arbs;
+        const pnl = s.total_pnl ?? 0;
+        const pnlEl = getEl('stat-pnl');
+        pnlEl.textContent = '$' + pnl.toFixed(2);
+        pnlEl.className = 'text-xl font-semibold ' + (pnl >= 0 ? 'text-accent' : 'text-danger');
+        getEl('stat-winrate').textContent = s.win_rate_pct != null ? s.win_rate_pct + '%' : '—';
+      } catch (e) {
+        getEl('stats-placeholder').textContent = 'Erro ao carregar estatísticas.';
+      }
+    }
+
+    document.querySelectorAll('.stats-period').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentPeriod = btn.dataset.period;
+        document.querySelectorAll('.stats-period').forEach(b => {
+          b.classList.remove('bg-accent/20', 'border-accent', 'text-accent');
+          b.classList.add('bg-[#0f1116]', 'border-border');
+        });
+        btn.classList.remove('bg-[#0f1116]', 'border-border');
+        btn.classList.add('bg-accent/20', 'border-accent', 'text-accent');
+        loadStats();
+      });
+    });
+
+    // --- Logs
+    async function loadLogs() {
+      try {
+        const r = await fetch(API + '/api/logs?tail=150', { headers: authHeaders() });
+        if (r.status === 401) return;
+        const d = await r.json();
+        getEl('log-content').textContent = (d.lines && d.lines.length) ? d.lines.join('\n') : '(vazio)';
+      } catch (e) {
+        getEl('log-content').textContent = 'Erro: ' + e.message;
+      }
+    }
+    getEl('btn-refresh-logs').addEventListener('click', loadLogs);
+
+    // --- Init (chamado após login em initSupabase)
+    initSupabase();
+  </script>
+</body>
+</html>

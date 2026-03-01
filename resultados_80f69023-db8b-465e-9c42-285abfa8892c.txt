@@ -1,0 +1,16 @@
+
+--- Bot iniciado em 2026-03-01T17:13:13.315785+00:00 | modo=safe dry_run=True ---
+Polymarket BTC 5-Min Bot | Modo: safe | Dry-run: True
+Bankroll: $10.00 | Min bet: $2.00 | Max token: 98c
+Entrada fixa (safe): $2.00
+--------------------------------------------------
+  Confiança 100.0% -> down
+  Sem oportunidade de arbitragem nesta janela; aposta executada normalmente.
+  DRY RUN: DOWN @ $0.93 (real), 2.15 shares
+  (resolução via Binance; Price to Beat ainda não disponível)
+  Resultado (btc-updown-5m-1772385000): DOWN -> WIN | PnL $+0.15 | Bankroll $10.15
+
+Próxima janela em 139s...
+  Janela fecha em 240s... (slug: btc-updown-5m-1772385600)
+  Confiança 100.0% -> up
+  Sem oportunidade de arbitragem nesta janela; aposta executada normalmente.
