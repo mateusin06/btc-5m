@@ -33,16 +33,29 @@ Substitua `SEU_IP_VPS` pelo IP que a Hostinger forneceu. Se usar chave SSH, o co
 
 ---
 
-## Passo 2: Atualizar o sistema e instalar dependências
+## Passo 2: Atualizar o sistema e instalar Python e dependências
+
+Instale Python, pip, venv e os demais pacotes necessários:
 
 ```bash
 apt update && apt upgrade -y
 apt install -y python3 python3-pip python3-venv git nginx
 ```
 
-- **python3 / pip / venv** — para rodar o bot e o backend.
+- **python3 / python3-pip / python3-venv** — para rodar o bot, o backend e o claim por API.
 - **git** — para clonar o repositório.
 - **nginx** — para servir o site e fazer proxy para a API.
+
+**Python 3.12 (recomendado para claim por API):** O recurso de **Resgatar agora** e **Auto-claim** usa o pacote `polymarket-apis`, que exige **Python ≥ 3.12**. No Ubuntu 22.04/24.04 o `python3` padrão pode ser 3.10 ou 3.11. Se quiser usar o claim por API na VPS, instale Python 3.12 e use-o no venv:
+
+```bash
+apt install -y software-properties-common
+add-apt-repository -y ppa:deadsnakes/ppa
+apt update
+apt install -y python3.12 python3.12-venv python3.12-dev
+```
+
+Depois, no Passo 4, crie o venv com `python3.12 -m venv venv` em vez de `python3 -m venv venv`.
 
 (Opcional, se for usar scripts que usam Playwright: `apt install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2`.)
 
@@ -64,8 +77,21 @@ Se você não usa Git ainda, pode enviar os arquivos por SFTP/SCP para `/root/BO
 
 ## Passo 4: Ambiente virtual e dependências Python
 
+Se você instalou **Python 3.12** (para claim por API), use:
+
+```bash
+python3.12 -m venv venv
+```
+
+Caso contrário (só Python padrão do sistema):
+
 ```bash
 python3 -m venv venv
+```
+
+Em seguida:
+
+```bash
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
@@ -277,10 +303,11 @@ Cada usuário logado pode **iniciar e parar o próprio bot** de forma independen
 ```bash
 apt update && apt upgrade -y
 apt install -y python3 python3-pip python3-venv git nginx
+# Opcional, para claim por API (Resgatar agora / Auto-claim): apt install -y software-properties-common && add-apt-repository -y ppa:deadsnakes/ppa && apt update && apt install -y python3.12 python3.12-venv python3.12-dev
 cd /root
 git clone https://github.com/SEU_USUARIO/BOT_Polymarket.git
 cd BOT_Polymarket
-python3 -m venv venv
+python3.12 -m venv venv   # ou: python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
