@@ -84,21 +84,14 @@ def run_claim(
     total_value = 0.0
 
     try:
-        # Web3 client: para EOA não precisa funder; para 1/2 sim
-        if sig_type in (1, 2) and funder:
-            web3 = PolymarketWeb3Client(
-                private_key=key,
-                signature_type=sig_type,
-                funder=funder,
-            )
-        else:
-            web3 = PolymarketWeb3Client(
-                private_key=key,
-                signature_type=sig_type,
-            )
+        # PolymarketWeb3Client não aceita funder; o endereço (EOA/proxy/Safe) é derivado da chave
+        web3 = PolymarketWeb3Client(
+            private_key=key,
+            signature_type=sig_type,
+        )
 
-        # Endereço cujas posições vamos buscar: EOA = address do client; Magic/Safe = funder
-        user_address = funder if (sig_type in (1, 2) and funder) else web3.address
+        # Endereço cujas posições vamos buscar (proxy/Safe já é o web3.address quando sig_type 1 ou 2)
+        user_address = web3.address
 
         data_client = PolymarketDataClient()
         positions = data_client.get_positions(
