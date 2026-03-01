@@ -1,0 +1,7 @@
+
+--- Auto-claim iniciado em 2026-03-01T19:27:31.456645+00:00 ---
+Auto-claimer Polymarket (headless=True)
+Abrindo navegador...
+Acesse polymarket.com/portfolio e faça login se necessário.
+O script irá verificar a página a cada 60s para claims disponíveis.
+Pressione Ctrl+C para encerrar.

@@ -25,7 +25,11 @@ load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+# Em ambiente serverless (ex.: Vercel) o disco pode ser read-only; não criar DATA_DIR aqui
+try:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    pass
 TRADES_FILE = DATA_DIR / "trades.jsonl"
 ENV_FILE = PROJECT_ROOT / ".env"
 
@@ -51,6 +55,26 @@ _bot_log_handles: dict[str, list] = {}
 # Um processo de auto-claim por usuário (user_id -> Popen)
 _autoclaim_processes: dict[str, subprocess.Popen] = {}
 _autoclaim_log_handles: dict[str, list] = {}
+
+
+def _writable_log_dir() -> Path:
+    """Retorna um diretório gravável para logs (evita erro em disco read-only, ex.: Vercel)."""
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        test = DATA_DIR / ".write_check"
+        test.write_text("")
+        test.unlink(missing_ok=True)
+        return DATA_DIR
+    except OSError:
+        base = Path(os.environ.get("TMPDIR") or os.environ.get("TEMP") or "/tmp")
+        log_dir = base / "polymarket_logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        return log_dir
+
+
+def _is_serverless() -> bool:
+    """True se estiver em ambiente serverless (ex.: Vercel), onde bot/autoclaim não podem rodar."""
+    return os.environ.get("VERCEL") == "1" or "/var/task" in str(PROJECT_ROOT)
 
 
 def _cleanup_user_bot(user_id: str) -> None:
@@ -407,6 +431,11 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
 def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     """Inicia o bot com o modo e parâmetros informados; usa config do Supabase do usuário. Um bot por usuário."""
     global _bot_processes, _bot_log_handles
+    if _is_serverless():
+        raise HTTPException(
+            status_code=503,
+            detail="O bot não está disponível na Vercel (ambiente serverless). Para rodar o bot, use um servidor com disco gravável, por exemplo uma VPS — veja o guia DEPLOY_VPS.md.",
+        )
     user_id = user["id"]
     _cleanup_user_bot(user_id)
     if user_id in _bot_processes and _bot_processes[user_id].poll() is None:
@@ -513,6 +542,11 @@ def bot_status(user: dict = Depends(get_current_user)):
 def autoclaim_start(user: dict = Depends(get_current_user)):
     """Inicia o auto-claim apenas para este usuário (um processo por usuário)."""
     global _autoclaim_processes, _autoclaim_log_handles
+    if _is_serverless():
+        raise HTTPException(
+            status_code=503,
+            detail="Auto-claim e o bot não estão disponíveis na Vercel (ambiente serverless). Para rodar o bot e o auto-claim, use um servidor com disco gravável, por exemplo uma VPS — veja o guia DEPLOY_VPS.md.",
+        )
     user_id = user["id"]
     if isinstance(user_id, str):
         pass
@@ -525,13 +559,25 @@ def autoclaim_start(user: dict = Depends(get_current_user)):
     safe_id = _safe_user_id(user_id)
     env = os.environ.copy()
     env["BOT_USER_ID"] = safe_id
-    env["HEADLESS"] = "1"
 
-    log_path = PROJECT_ROOT / "data" / f"autoclaim_{safe_id}.txt"
+    row = _config_from_supabase(user["id"], user["_token"])
+    key = (row.get("private_key") or "").strip()
+    if not key or key == "0x...":
+        raise HTTPException(
+            status_code=400,
+            detail="Salve suas credenciais Polymarket (chave privada e Funder Address) na aba Config antes de ativar o auto-claim.",
+        )
+    env["POLY_PRIVATE_KEY"] = row.get("private_key", "")
+    env["POLY_FUNDER_ADDRESS"] = row.get("funder_address", "")
+    env["POLY_SIGNATURE_TYPE"] = str(int(row.get("signature_type", 1)))
+    env["CLAIM_INTERVAL_SEC"] = os.getenv("CLAIM_INTERVAL_SEC", "300")
+
+    log_dir = _writable_log_dir()
+    log_path = log_dir / f"autoclaim_{safe_id}.txt"
     try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        log_dir.mkdir(parents=True, exist_ok=True)
         with open(log_path, "a", encoding="utf-8") as log_file:
-            log_file.write(f"\n--- Auto-claim iniciado em {datetime.now(timezone.utc).isoformat()} ---\n")
+            log_file.write(f"\n--- Auto-claim (claim por API) iniciado em {datetime.now(timezone.utc).isoformat()} ---\n")
         stdout_dest = open(log_path, "a", encoding="utf-8")
         stderr_dest = open(log_path, "a", encoding="utf-8")
     except Exception as e:
@@ -540,7 +586,7 @@ def autoclaim_start(user: dict = Depends(get_current_user)):
     _autoclaim_log_handles[user_id] = [stdout_dest, stderr_dest]
 
     try:
-        cmd = [sys.executable, str(PROJECT_ROOT / "auto_claim.py")]
+        cmd = [sys.executable, str(PROJECT_ROOT / "claim_loop.py")]
         proc = subprocess.Popen(
             cmd,
             cwd=str(PROJECT_ROOT),
@@ -597,6 +643,29 @@ def autoclaim_status(user: dict = Depends(get_current_user)):
     if proc is None or proc.poll() is not None:
         return AutoclaimStatusResponse(running=False)
     return AutoclaimStatusResponse(running=True, pid=proc.pid)
+
+
+@app.post("/api/claim/run")
+def claim_run_now(user: dict = Depends(get_current_user)):
+    """Executa o claim por API uma vez (posições redeemable) com a config do usuário."""
+    row = _config_from_supabase(user["id"], user["_token"])
+    key = (row.get("private_key") or "").strip()
+    funder = (row.get("funder_address") or "").strip()
+    sig_type = int(row.get("signature_type", 1)) if row.get("signature_type") is not None else 1
+    if not key or key == "0x...":
+        raise HTTPException(
+            status_code=400,
+            detail="Salve suas credenciais Polymarket (chave privada e Funder Address) na aba Config.",
+        )
+    try:
+        from claim_api import run_claim
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="Módulo claim_api/polymarket-apis não disponível. Instale: pip install polymarket-apis (Python >= 3.12).",
+        )
+    result = run_claim(private_key=key, funder_address=funder, signature_type=sig_type)
+    return result
 
 
 def _parse_trades(period: str, user_id: str) -> list[dict[str, Any]]:

@@ -213,15 +213,17 @@
 
       <div class="bg-panel rounded-xl border border-border p-6">
         <h2 class="text-lg font-semibold text-white mb-2">Auto-claim</h2>
-        <p class="text-sm text-muted mb-4">Ativa um script que verifica a cada 60s se há posições para dar claim na Polymarket (portfolio). Roda em segundo plano só para você.</p>
+        <p class="text-sm text-muted mb-4">Claim por API: resgata posições vencedoras na Polymarket usando suas credenciais (sem navegador). Ao ativar, um processo roda a cada 5 minutos. Ou clique em &quot;Resgatar agora&quot; para executar uma vez.</p>
         <div id="autoclaim-status" class="mb-4 flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-gray-500" id="autoclaim-dot"></span>
           <span id="autoclaim-text">Verificando...</span>
         </div>
-        <div class="flex gap-3">
+        <div class="flex flex-wrap gap-3">
           <button type="button" id="btn-autoclaim-on" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Ativar autoclaim</button>
           <button type="button" id="btn-autoclaim-off" class="px-4 py-2 bg-[#2d333b] text-white font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Desativar autoclaim</button>
+          <button type="button" id="btn-claim-now" class="px-4 py-2 bg-[#3b82f6] text-white font-medium rounded-lg hover:opacity-90">Resgatar agora</button>
         </div>
+        <p id="claim-now-result" class="mt-3 text-sm text-muted hidden"></p>
       </div>
     </section>
 
@@ -662,6 +664,33 @@
         await refreshAutoclaimStatus();
       } catch (e) {
         alert('Erro: ' + e.message);
+      }
+    });
+
+    getEl('btn-claim-now').addEventListener('click', async () => {
+      const resultEl = getEl('claim-now-result');
+      resultEl.classList.add('hidden');
+      try {
+        const r = await fetch(API + '/api/claim/run', { method: 'POST', headers: authHeaders() });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          resultEl.textContent = data.detail || r.statusText || 'Erro ao resgatar.';
+          resultEl.classList.remove('hidden');
+          resultEl.classList.add('text-danger');
+          return;
+        }
+        const msg = data.message || '';
+        const extra = [];
+        if (data.redeemed != null) extra.push('Resgatadas: ' + data.redeemed);
+        if (data.failed != null) extra.push('Falhas: ' + data.failed);
+        resultEl.textContent = msg + (extra.length ? ' (' + extra.join(', ') + ')' : '');
+        resultEl.classList.remove('hidden');
+        resultEl.classList.remove('text-danger');
+        if (data.ok) resultEl.classList.add('text-accent'); else resultEl.classList.add('text-danger');
+      } catch (e) {
+        resultEl.textContent = 'Erro: ' + e.message;
+        resultEl.classList.remove('hidden');
+        resultEl.classList.add('text-danger');
       }
     });
 

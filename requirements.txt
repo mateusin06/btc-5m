@@ -6,3 +6,5 @@ openpyxl>=3.1.0
 fastapi>=0.109.0
 uvicorn>=0.27.0
 pydantic>=2.0
+# Claim por API (autoclaim no dashboard); requer Python >= 3.12
+polymarket-apis>=0.4.0
