@@ -528,6 +528,12 @@ def run_trade_cycle(config: Config) -> bool:
                         log_trade(config, slug, trade_direction, "arb", pnl_arb, bet_size + cost_second)
                         return True
                     time.sleep(ARB_POLL_INTERVAL)
+        # Only Hedge+: re-verificar EV+ com preço atual (pode ter mudado desde o sinal)
+        if config.mode == "only_hedge_plus" and final_result is not None:
+            p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
+            if p_win <= token_price + EV_MIN_MARGIN:
+                print(f"  EV+ não mais válido: P(win)={p_win:.1%} <= preço ${token_price:.2f}+{EV_MIN_MARGIN:.0%}, pulando.", flush=True)
+                return False
         # Sem oportunidade de arbitragem nesta janela → aposta segue normal, aguardar resolução
         print("  Sem oportunidade de arbitragem nesta janela; aposta executada normalmente.", flush=True)
         time.sleep(max(0, close_time - int(time.time()) + 2))
@@ -574,6 +580,12 @@ def run_trade_cycle(config: Config) -> bool:
     if real_price is not None and real_price > MAX_TOKEN_PRICE:
         print(f"  Token @ ${real_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
         return False
+    # Only Hedge+: re-verificar EV+ com preço real (pode ter mudado desde o sinal)
+    if config.mode == "only_hedge_plus" and final_result is not None and real_price is not None:
+        p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
+        if p_win <= real_price + EV_MIN_MARGIN:
+            print(f"  EV+ não mais válido: P(win)={p_win:.1%} <= preço ${real_price:.2f}+{EV_MIN_MARGIN:.0%}, pulando.", flush=True)
+            return False
 
     # 6. Executar ordem(s)
     client = create_clob_client()
