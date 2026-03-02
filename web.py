@@ -478,9 +478,19 @@ def api_set_allowances(user: dict = Depends(get_current_user)):
     except ImportError:
         raise HTTPException(status_code=503, detail="Módulo set_allowances não encontrado.")
     key = (row.get("private_key") or "").strip()
-    ok, msg, details = run_set_allowances(key)
+    api_key = (row.get("api_key") or "").strip()
+    api_secret = (row.get("api_secret") or "").strip()
+    api_passphrase = (row.get("api_passphrase") or "").strip()
+    ok, msg, details = run_set_allowances(
+        key,
+        api_key=api_key or None,
+        api_secret=api_secret or None,
+        api_passphrase=api_passphrase or None,
+    )
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
+    if not (api_key and api_secret and api_passphrase):
+        details.append("Aviso: credenciais API não salvas. Salve-as na Config e clique novamente para atualizar o saldo na API.")
     return {"ok": True, "message": msg, "details": details}
 
 
@@ -514,7 +524,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     env["POLY_API_KEY"] = row.get("api_key", "")
     env["POLY_API_SECRET"] = row.get("api_secret", "")
     env["POLY_API_PASSPHRASE"] = row.get("api_passphrase", "")
-    env["POLY_SIGNATURE_TYPE"] = str(row.get("signature_type", 1))
+    env["POLY_SIGNATURE_TYPE"] = str(row.get("signature_type", 0))
     env["STARTING_BANKROLL"] = str(row.get("starting_bankroll", 10))
     env["MIN_BET"] = str(row.get("min_bet", 5))
     env["BOT_MODE"] = mode
@@ -627,7 +637,7 @@ def autoclaim_start(user: dict = Depends(get_current_user)):
     env["POLY_PRIVATE_KEY"] = row.get("private_key", "")
     env["POLY_FUNDER_ADDRESS"] = row.get("funder_address", "")
     env["POLY_SIGNATURE_TYPE"] = str(int(row.get("signature_type", 1)))
-    env["CLAIM_INTERVAL_SEC"] = os.getenv("CLAIM_INTERVAL_SEC", "300")
+    env["CLAIM_INTERVAL_SEC"] = os.getenv("CLAIM_INTERVAL_SEC", "60")
 
     log_dir = _writable_log_dir()
     log_path = log_dir / f"autoclaim_{safe_id}.txt"

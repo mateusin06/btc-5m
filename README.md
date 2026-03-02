@@ -6,7 +6,7 @@ Bot de trading para os mercados binários "BTC Up or Down" de 5 minutos na Polym
 
 A cada 5 minutos, a Polymarket abre um mercado: "O BTC estará mais alto ou mais baixo que o preço de abertura quando a janela fechar?" Você compra tokens "Up" ou "Down" (ex: $0.50–$0.95). Se acertar, cada token paga $1.00. Se errar, perde a aposta.
 
-O bot usa análise técnica em tempo real (Binance) para prever o resultado. Nos modos **safe**, **aggressive** e **degen** ele entra na operação quando faltam **3 minutos ou menos** para o fechamento (os 2 primeiros minutos da janela ficam em espera para ter mais informação antes de decidir). No modo **arbitragem** ele monitora e pode operar **desde o início da janela** para captar oportunidades de lucro garantido. Nenhum token é comprado acima de **90c** (configurável via `MAX_TOKEN_PRICE`).
+O bot usa análise técnica em tempo real (Binance) para prever o resultado. Nos modos **safe**, **aggressive** e **degen** ele entra na operação quando faltam **2 minutos ou menos** para o fechamento (os 3 primeiros minutos da janela ficam em espera para ter mais informação antes de decidir). No modo **arbitragem** ele monitora e pode operar **desde o início da janela** para captar oportunidades de lucro garantido. Nenhum token é comprado acima de **90c** (configurável via `MAX_TOKEN_PRICE`).
 
 ## Arquivos
 
@@ -142,9 +142,9 @@ python bot.py --dry-run --mode arbitragem --arbitragem-pct 25
 
 | Modo | Aposta | Quando entra | Confiança mín. |
 |------|--------|--------------|----------------|
-| **safe** | Valor fixo em USD (perguntado ou `--safe-bet`) | Últimos 3 min | 30% |
-| **aggressive** | 25% da banca (ou só lucros se bankroll > inicial) | Últimos 3 min | 20% |
-| **degen** | 100% da banca | Últimos 3 min | 0% |
+| **safe** | Valor fixo em USD (perguntado ou `--safe-bet`) | Últimos 2 min | 30% |
+| **aggressive** | 25% da banca (ou só lucros se bankroll > inicial) | Últimos 2 min | 50% |
+| **degen** | 100% da banca | Últimos 2 min | 0% |
 | **arbitragem** | % da banca (perguntado ou `--arbitragem-pct`) | **Desde o início da janela** | 30% — prioriza arb pura; senão aposta direcional + hedge; sem hedge = aposta normal |
 
 ### Outros exemplos

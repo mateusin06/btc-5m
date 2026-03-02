@@ -22,7 +22,7 @@ load_dotenv()
 # Configurações de modos
 MODES = {
     "safe": {"min_confidence": 0.50},  # aposta fixa em $ (perguntada no início); entrada só com confiança ≥50%
-    "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.20},
+    "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.50},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},  # bet_pct definido no início pelo usuário
 }
@@ -33,7 +33,7 @@ ARB_DEADLINE_T = 10  # para de tentar hedge N s antes do fechamento
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
 WINDOW_SEC = 300
-MONITOR_START_T = 180  # começa a monitorar 3 min antes do fechamento (opera só se faltar 3 min ou menos)
+MONITOR_START_T = 120  # começa a monitorar 2 min antes do fechamento (opera só se faltar 2 min ou menos)
 HARD_DEADLINE_T = 5
 TA_POLL_INTERVAL = 2
 SPIKE_THRESHOLD = 1.5
@@ -145,7 +145,7 @@ def create_clob_client():
 
     key = os.getenv("POLY_PRIVATE_KEY", "").strip()
     funder = os.getenv("POLY_FUNDER_ADDRESS", "").strip()
-    sig_type = int(os.getenv("POLY_SIGNATURE_TYPE", "1"))
+    sig_type = int(os.getenv("POLY_SIGNATURE_TYPE", "0"))
 
     api_key = os.getenv("POLY_API_KEY", "").strip()
     api_secret = os.getenv("POLY_API_SECRET", "").strip()
@@ -173,6 +173,70 @@ def create_clob_client():
         client.set_api_creds(client.create_or_derive_api_creds())
 
     return client
+
+
+def _sync_balance_allowance(client) -> None:
+    """Atualiza balance/allowance na API CLOB antes de operar. Necessário para evitar 'not enough balance/allowance'."""
+    try:
+        from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
+
+        sig_type = int(os.getenv("POLY_SIGNATURE_TYPE", "0"))
+        params = BalanceAllowanceParams(asset_type=AssetType.COLLATERAL, signature_type=sig_type)
+        client.update_balance_allowance(params=params)
+    except Exception as e:
+        print(f"  Aviso: update_balance_allowance falhou: {e}", flush=True)
+
+
+def _resolve_trade_and_update(
+    window_ts: int,
+    slug: str,
+    window_open: float,
+    trade_direction: str,
+    bet_size: float,
+    real_price: float,
+    config: Config,
+) -> bool:
+    """
+    Aguarda resolução da janela, atualiza bankroll e registra win/loss.
+    Retorna True se conseguiu resolver.
+    """
+    from api import get_price_to_beat, get_window_resolution_polymarket, get_window_resolution_binance
+
+    close_time = window_ts + WINDOW_SEC
+    wait_secs = max(0, close_time - int(time.time()) + 2)
+    if wait_secs > 0:
+        print(f"  Aguardando fechamento da janela ({wait_secs}s)...", flush=True)
+        time.sleep(wait_secs)
+
+    next_window_ts = window_ts + WINDOW_SEC
+    slug_next = f"btc-updown-5m-{next_window_ts}"
+    up_wins = None
+    for _ in range(60):
+        open_chainlink = get_price_to_beat(slug)
+        close_chainlink = get_price_to_beat(slug_next)
+        if open_chainlink is not None and close_chainlink is not None:
+            up_wins = close_chainlink >= open_chainlink
+            break
+        if close_chainlink is not None:
+            up_wins = close_chainlink >= window_open
+            break
+        time.sleep(2)
+    if up_wins is None:
+        up_wins = get_window_resolution_polymarket(slug)
+    if up_wins is None:
+        up_wins = get_window_resolution_binance(window_ts)
+        if up_wins is not None:
+            print("  (resolução via Binance; Price to Beat ainda não disponível)", flush=True)
+    if up_wins is None:
+        print("  Não foi possível verificar resolução.", flush=True)
+        return False
+    shares = bet_size / real_price
+    won = (trade_direction == "up" and up_wins) or (trade_direction == "down" and not up_wins)
+    pnl = (shares * 1.0 - bet_size) if won else -bet_size
+    config.bankroll += pnl
+    print(f"  Resultado ({slug}): {'UP' if up_wins else 'DOWN'} -> {'WIN' if won else 'LOSS'} | PnL ${pnl:+.2f} | Bankroll ${config.bankroll:.2f}", flush=True)
+    log_trade(config, slug, trade_direction, "win" if won else "loss", pnl, bet_size)
+    return True
 
 
 def place_fok_order(client, token_id: str, amount_usd: float) -> bool:
@@ -257,7 +321,7 @@ def run_trade_cycle(config: Config) -> bool:
     slug = f"btc-updown-5m-{window_ts}"
     close_time = window_ts + WINDOW_SEC
 
-    # 1. Esperar até entrar na janela (arbitragem: desde o início; outros: últimos 3 min)
+    # 1. Esperar até entrar na janela (arbitragem: desde o início; outros: últimos 2 min)
     monitor_secs = WINDOW_SEC if config.mode == "arbitragem" else MONITOR_START_T
     while True:
         secs = seconds_until_close()
@@ -469,6 +533,7 @@ def run_trade_cycle(config: Config) -> bool:
 
     # 6. Executar ordem(s)
     client = create_clob_client()
+    _sync_balance_allowance(client)  # API precisa reconhecer saldo/allowance antes de aceitar ordens
     ok = False
     arb_first_one_fill = False  # True se fizemos arb pura mas só a 1ª ordem encheu
     arb_shares = None  # shares quando arb pura com só 1ª ordem (para hedge)
@@ -485,9 +550,12 @@ def run_trade_cycle(config: Config) -> bool:
             ok1 = place_fok_order(client, tokens[0], amount_up) or place_limit_order(client, tokens[0], amount_up)
             ok2 = place_fok_order(client, tokens[1], amount_down) or place_limit_order(client, tokens[1], amount_down)
             if ok1 and ok2:
+                shares_arb = bet_size / (price_up + price_down)
+                pnl_arb = shares_arb - bet_size
                 pct_arb = (1.0 - (price_up + price_down)) / (price_up + price_down) * 100
-                print(f"  ARB PURA: Up @ ${price_up:.2f} + Down @ ${price_down:.2f} | lucro garantido ~{pct_arb:.1f}%", flush=True)
-                log_trade(config, slug, "arb", "placed", None, bet_size)
+                config.bankroll += pnl_arb
+                print(f"  ARB PURA: Up @ ${price_up:.2f} + Down @ ${price_down:.2f} | lucro garantido ~{pct_arb:.1f}% | PnL ${pnl_arb:+.2f} | Bankroll ${config.bankroll:.2f}", flush=True)
+                log_trade(config, slug, "arb", "arb", pnl_arb, bet_size)
                 return True
             if ok1 and not ok2:
                 ok = True
@@ -522,16 +590,24 @@ def run_trade_cycle(config: Config) -> bool:
                         if not ok2:
                             ok2 = place_limit_order(client, other_token_id, amount_second)
                         if ok2:
+                            amount_second = shares_arb * other_price
+                            total_cost = bet_size + amount_second
+                            pnl_arb = shares_arb - total_cost
                             pct_arb = ((1.0 - (buy_price + other_price)) / (buy_price + other_price)) * 100
-                            print(f"  ARBITRAGEM: comprado lado oposto @ ${other_price:.2f} (lucro garantido ~{pct_arb:.1f}%)", flush=True)
-                            log_trade(config, slug, trade_direction, "placed", None, bet_size)
+                            config.bankroll += pnl_arb
+                            print(f"  ARBITRAGEM: comprado lado oposto @ ${other_price:.2f} (lucro garantido ~{pct_arb:.1f}%) | PnL ${pnl_arb:+.2f} | Bankroll ${config.bankroll:.2f}", flush=True)
+                            log_trade(config, slug, trade_direction, "arb", pnl_arb, bet_size + amount_second)
                             return True
                     time.sleep(ARB_POLL_INTERVAL)
     else:
         print("  Falha ao executar ordem.", flush=True)
 
     if ok:
-        log_trade(config, slug, trade_direction, "placed", None, bet_size)
+        # Aguardar resolução e atualizar bankroll (win/loss)
+        price_for_resolution = real_price or 0.5
+        _resolve_trade_and_update(
+            window_ts, slug, window_open, trade_direction, bet_size, price_for_resolution, config
+        )
     return ok
 
 

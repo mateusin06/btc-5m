@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Intervalo entre execuções (segundos)
-CLAIM_INTERVAL_SEC = int(os.getenv("CLAIM_INTERVAL_SEC", "300"))
+CLAIM_INTERVAL_SEC = int(os.getenv("CLAIM_INTERVAL_SEC", "60"))
 
 
 def _safe_user_id(raw: str) -> str:

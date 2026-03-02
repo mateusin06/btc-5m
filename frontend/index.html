@@ -114,6 +114,16 @@
               <option value="2">2 — Safe / Proxy</option>
             </select>
           </div>
+          <div id="allowances-wrap" class="hidden rounded-lg bg-[#0f1116] p-3 border border-border">
+            <p class="text-sm text-amber-400/90 mb-2 font-medium">Tipo 0 (EOA): o USDC deve estar na sua carteira MetaMask na Polygon diretamente.</p>
+            <p class="text-xs text-muted mb-2">Se você depositou no site Polymarket.com, os fundos estão em um proxy — use tipo 2 com Funder = endereço do Portfolio.</p>
+            <p class="text-sm text-muted mb-2">Configure os allowances (uma vez) antes de operar:</p>
+            <div class="flex gap-3 items-center">
+              <button type="button" id="btn-set-allowances" class="px-4 py-2 bg-[#2d333b] text-white font-medium rounded-lg hover:bg-[#3d434b] border border-border">Configurar allowances</button>
+              <span id="allowances-status" class="text-sm text-muted"></span>
+            </div>
+            <p class="text-xs text-muted mt-1">Requer MATIC/POL na carteira (Polygon) para gas. Pode levar ~30s.</p>
+          </div>
           <div class="flex gap-3">
             <button type="button" id="btn-derive" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90">Gerar API</button>
             <span id="derive-status" class="text-sm text-muted self-center"></span>
@@ -122,14 +132,6 @@
             <p class="text-sm text-gray-400 mb-1">Endereço que o bot usa para ordens (deve ser o mesmo do Portfolio na Polymarket):</p>
             <code id="trading-address-out" class="font-mono text-xs break-all text-accent"></code>
             <p class="text-xs text-muted mt-2">Se for diferente do endereço do seu Portfolio, o bot verá saldo zero → &quot;not enough balance&quot;. Use a chave privada da carteira que tem o depósito.</p>
-          </div>
-          <div id="allowances-wrap" class="hidden">
-            <p class="text-sm text-muted mb-2">MetaMask: se o bot retornar &quot;not enough balance / allowance&quot;, configure os allowances (uma vez):</p>
-            <div class="flex gap-3 items-center">
-              <button type="button" id="btn-set-allowances" class="px-4 py-2 bg-[#2d333b] text-white font-medium rounded-lg hover:bg-[#3d434b] border border-border">Configurar allowances</button>
-              <span id="allowances-status" class="text-sm text-muted"></span>
-            </div>
-            <p class="text-xs text-muted mt-1">Requer MATIC/POL na carteira (Polygon) para gas. Pode levar ~30s.</p>
           </div>
           <div id="creds-out" class="hidden space-y-2 rounded-lg bg-[#0f1116] p-3 border border-border">
             <div class="flex justify-between items-center gap-2">
@@ -235,7 +237,7 @@
 
       <div class="bg-panel rounded-xl border border-border p-6">
         <h2 class="text-lg font-semibold text-white mb-2">Auto-claim</h2>
-        <p class="text-sm text-muted mb-4">Claim por API: resgata posições vencedoras na Polymarket usando suas credenciais (sem navegador). Ao ativar, um processo roda a cada 5 minutos. Ou clique em &quot;Resgatar agora&quot; para executar uma vez.</p>
+        <p class="text-sm text-muted mb-4">Claim por API: resgata posições vencedoras na Polymarket usando suas credenciais (sem navegador). Ao ativar, um processo roda a cada 1 minuto. Ou clique em &quot;Resgatar agora&quot; para executar uma vez.</p>
         <div id="autoclaim-status" class="mb-4 flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-gray-500" id="autoclaim-dot"></span>
           <span id="autoclaim-text">Verificando...</span>
@@ -490,14 +492,13 @@
             wrap.classList.remove('hidden');
           } else { wrap.classList.add('hidden'); }
         } catch (_) { wrap.classList.add('hidden'); }
-        // Mostrar botão de allowances só para MetaMask (tipo 0)
-        if (sigType === 0) {
-          allowancesWrap.classList.remove('hidden');
-        } else {
-          allowancesWrap.classList.add('hidden');
-        }
       } else {
         wrap.classList.add('hidden');
+      }
+      // Botão de allowances: sempre visível para MetaMask (tipo 0). Se não salvou, o endpoint pede para salvar.
+      if (sigType === 0) {
+        allowancesWrap.classList.remove('hidden');
+      } else {
         allowancesWrap.classList.add('hidden');
       }
     }
@@ -536,6 +537,12 @@
       } catch (e) {
         status.textContent = 'Erro: ' + e.message;
       }
+    });
+
+    // Ao mudar tipo de carteira, mostrar/ocultar botão de allowances
+    getEl('input-signature-type').addEventListener('change', () => {
+      const v = parseInt(getEl('input-signature-type').value, 10) || 0;
+      getEl('allowances-wrap').classList.toggle('hidden', v !== 0);
     });
 
     // --- Configurar allowances (MetaMask)

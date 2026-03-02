@@ -31,10 +31,17 @@ ERC20_APPROVE_ABI = [{"constant": False, "inputs": [{"name": "_spender", "type":
 ERC1155_SET_APPROVAL_ABI = [{"inputs": [{"internalType": "address", "name": "operator", "type": "address"}, {"internalType": "bool", "name": "approved", "type": "bool"}], "name": "setApprovalForAll", "outputs": [], "stateMutability": "nonpayable", "type": "function"}]
 
 
-def run_set_allowances(private_key: str, rpc_url: str | None = None) -> tuple[bool, str, list[str]]:
+def run_set_allowances(
+    private_key: str,
+    rpc_url: str | None = None,
+    api_key: str | None = None,
+    api_secret: str | None = None,
+    api_passphrase: str | None = None,
+) -> tuple[bool, str, list[str]]:
     """
     Configura allowances para a carteira. Retorna (ok, message, details).
-    Usado pelo script CLI e pelo endpoint /api/set-allowances.
+    Se api_key/secret/passphrase forem fornecidos, chama update_balance_allowance
+    para a API CLOB reconhecer o saldo (necessário para ordens funcionarem).
     """
     key = (private_key or "").strip()
     if not key or key == "0x...":
@@ -69,7 +76,8 @@ def run_set_allowances(private_key: str, rpc_url: str | None = None) -> tuple[bo
     for exchange in EXCHANGES:
         exchange = Web3.to_checksum_address(exchange)
         try:
-            nonce = w3.eth.get_transaction_count(pub_key)
+            # 'pending' inclui nossas próprias tx pendentes, evitando "nonce too low"
+            nonce = w3.eth.get_transaction_count(pub_key, "pending")
             tx_usdc = usdc.functions.approve(exchange, int(MAX_INT, 0)).build_transaction({
                 "chainId": CHAIN_ID, "from": pub_key, "nonce": nonce
             })
@@ -78,7 +86,7 @@ def run_set_allowances(private_key: str, rpc_url: str | None = None) -> tuple[bo
             receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
             details.append(f"USDC approve {exchange[:10]}...: {'ok' if receipt['status'] == 1 else 'falhou'}")
 
-            nonce = w3.eth.get_transaction_count(pub_key)
+            nonce = w3.eth.get_transaction_count(pub_key, "pending")
             tx_ctf = ctf.functions.setApprovalForAll(exchange, True).build_transaction({
                 "chainId": CHAIN_ID, "from": pub_key, "nonce": nonce
             })
@@ -88,6 +96,27 @@ def run_set_allowances(private_key: str, rpc_url: str | None = None) -> tuple[bo
             details.append(f"CTF setApprovalForAll {exchange[:10]}...: {'ok' if receipt['status'] == 1 else 'falhou'}")
         except Exception as e:
             return False, f"Erro ao configurar allowances: {e!s}", details
+
+    # Atualizar balance/allowance na API CLOB (necessário para a API reconhecer o saldo)
+    if api_key and api_secret and api_passphrase:
+        try:
+            from py_clob_client.client import ClobClient
+            from py_clob_client.clob_types import ApiCreds, BalanceAllowanceParams, AssetType
+
+            client = ClobClient(
+                "https://clob.polymarket.com",
+                chain_id=137,
+                key=key,
+                signature_type=0,
+                funder=None,
+            )
+            client.set_api_creds(ApiCreds(api_key=api_key, api_secret=api_secret, api_passphrase=api_passphrase))
+            params = BalanceAllowanceParams(asset_type=AssetType.COLLATERAL, signature_type=0)
+            client.update_balance_allowance(params=params)
+            details.append("update_balance_allowance (CLOB API): ok")
+        except Exception as e:
+            details.append(f"update_balance_allowance: {e!s} (ordens podem falhar)")
+            # Não falhar - os approves on-chain já foram feitos
 
     return True, "Allowances configurados. Agora você pode operar via API.", details
 
