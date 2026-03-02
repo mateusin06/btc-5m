@@ -131,6 +131,14 @@
             <code id="trading-address-out" class="font-mono text-xs break-all text-accent"></code>
             <p class="text-xs text-muted mt-2">Se for diferente do endereço do seu Portfolio, o bot verá saldo zero → &quot;not enough balance&quot;. Use a chave privada da carteira que tem o depósito.</p>
           </div>
+          <div class="rounded-lg bg-[#0f1116] p-3 border border-border">
+            <p class="text-sm text-gray-400 mb-2">Diagnóstico &quot;not enough balance&quot;:</p>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" id="btn-check-balance" class="px-4 py-2 bg-[#2d333b] text-white font-medium rounded-lg hover:bg-panel border border-border">Verificar saldo</button>
+              <button type="button" id="btn-force-sync" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90">Forçar sync (proxy)</button>
+            </div>
+            <pre id="check-balance-result" class="mt-2 text-xs text-gray-300 font-mono hidden"></pre>
+          </div>
           <div id="creds-out" class="hidden space-y-2 rounded-lg bg-[#0f1116] p-3 border border-border">
             <div class="flex justify-between items-center gap-2">
               <span class="text-sm text-gray-400">API Key</span>
@@ -536,6 +544,51 @@
       } catch (e) {
         status.textContent = 'Erro: ' + e.message;
         status.classList.remove('text-accent');
+      }
+    });
+
+    // --- Forçar sync (proxy)
+    getEl('btn-force-sync').addEventListener('click', async () => {
+      const pre = getEl('check-balance-result');
+      pre.classList.remove('hidden');
+      pre.textContent = 'Forçando sync (5x, ~8s)...';
+      try {
+        const r = await fetch(API + '/api/force-sync-balance', { method: 'POST', headers: authHeaders() });
+        const data = await r.json().catch(() => ({}));
+        if (r.ok && data.ok) {
+          pre.textContent = '✓ ' + (data.message || 'Concluído') + '\nTente iniciar o bot novamente.';
+        } else {
+          pre.textContent = 'Erro: ' + (data.detail || r.statusText);
+        }
+      } catch (e) {
+        pre.textContent = 'Erro: ' + e.message;
+      }
+    });
+
+    // --- Verificar saldo (diagnóstico)
+    getEl('btn-check-balance').addEventListener('click', async () => {
+      const pre = getEl('check-balance-result');
+      pre.classList.remove('hidden');
+      pre.textContent = 'Verificando...';
+      try {
+        const r = await fetch(API + '/api/check-balance', { headers: authHeaders() });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          pre.textContent = 'Erro: ' + (data.detail || r.statusText);
+          return;
+        }
+        let txt = `Endereço: ${data.address || '?'}\n`;
+        txt += `signature_type: ${data.signature_type}\n`;
+        txt += `update_balance_allowance: ${data.update_ok ? 'OK' : 'FALHOU'}\n`;
+        if (data.update_error) txt += `  erro: ${data.update_error}\n`;
+        txt += `balance: ${data.balance != null ? '$' + data.balance.toFixed(2) : 'não retornado'}\n`;
+        txt += `allowance: ${data.allowance ?? 'não retornado'}\n`;
+        if (data.balance != null && data.balance < 1) txt += '\n→ Saldo baixo. Deposite USDC na Polymarket.\n';
+        else if (data.balance == null) txt += '\n→ API não vê saldo. Faça 1 trade manual no site e tente de novo.\n';
+        else if (!data.allowance || data.allowance === '0') txt += '\n→ Saldo OK. Para proxy, allowance pode não aparecer aqui — use "Forçar sync" antes de iniciar o bot.\n';
+        pre.textContent = txt;
+      } catch (e) {
+        pre.textContent = 'Erro: ' + e.message;
       }
     });
 

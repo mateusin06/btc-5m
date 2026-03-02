@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -458,6 +459,104 @@ def get_trading_address(user: dict = Depends(get_current_user)):
     return {"address": addr}
 
 
+@app.get("/api/check-balance")
+def api_check_balance(user: dict = Depends(get_current_user)):
+    """Diagnóstico: verifica saldo e allowance na API (para debugar 'not enough balance')."""
+    row = _config_from_supabase(user["id"], user["_token"])
+    if not row or not row.get("private_key") or not row.get("api_key"):
+        raise HTTPException(status_code=400, detail="Salve chave privada e API na Config primeiro.")
+    try:
+        from py_clob_client.client import ClobClient
+        from py_clob_client.clob_types import ApiCreds, BalanceAllowanceParams, AssetType
+    except ImportError:
+        raise HTTPException(status_code=503, detail="py_clob_client não instalado.")
+    key = (row.get("private_key") or "").strip()
+    funder = (row.get("funder_address") or "").strip()
+    st = row.get("signature_type")
+    sig_type = int(st) if st is not None else 0
+    funder_arg = (funder or None) if sig_type in (1, 2) else None
+    client = ClobClient(
+        CLOB_HOST,
+        chain_id=CHAIN_ID,
+        key=key,
+        creds=ApiCreds(
+            api_key=row.get("api_key", ""),
+            api_secret=row.get("api_secret", ""),
+            api_passphrase=row.get("api_passphrase", ""),
+        ),
+        signature_type=sig_type,
+        funder=funder_arg,
+    )
+    addr = client.get_address()
+    params = BalanceAllowanceParams(asset_type=AssetType.COLLATERAL, signature_type=sig_type)
+    update_ok = True
+    update_err = None
+    try:
+        client.update_balance_allowance(params=params)
+    except Exception as e:
+        update_ok = False
+        update_err = str(e)
+    bal = None
+    allowance = None
+    try:
+        resp = client.get_balance_allowance(params=params)
+        if resp:
+            bal = resp.get("balance")
+            allowance = resp.get("allowance")
+    except Exception:
+        pass
+    # USDC usa 6 decimais: valor bruto / 1e6 = USD
+    bal_float = float(bal) if bal is not None else None
+    if bal_float is not None and bal_float > 1000:
+        bal_float = bal_float / 1e6
+    return {
+        "address": addr,
+        "signature_type": sig_type,
+        "update_ok": update_ok,
+        "update_error": update_err,
+        "balance": bal_float,
+        "allowance": str(allowance) if allowance is not None else None,
+    }
+
+
+@app.post("/api/force-sync-balance")
+def api_force_sync_balance(user: dict = Depends(get_current_user)):
+    """Força múltiplos update_balance_allowance (para proxy/safe com 'not enough allowance')."""
+    row = _config_from_supabase(user["id"], user["_token"])
+    if not row or not row.get("private_key") or not row.get("api_key"):
+        raise HTTPException(status_code=400, detail="Salve chave privada e API na Config primeiro.")
+    try:
+        from py_clob_client.client import ClobClient
+        from py_clob_client.clob_types import ApiCreds, BalanceAllowanceParams, AssetType
+    except ImportError:
+        raise HTTPException(status_code=503, detail="py_clob_client não instalado.")
+    key = (row.get("private_key") or "").strip()
+    funder = (row.get("funder_address") or "").strip()
+    st = row.get("signature_type")
+    sig_type = int(st) if st is not None else 0
+    funder_arg = (funder or None) if sig_type in (1, 2) else None
+    client = ClobClient(
+        CLOB_HOST,
+        chain_id=CHAIN_ID,
+        key=key,
+        creds=ApiCreds(
+            api_key=row.get("api_key", ""),
+            api_secret=row.get("api_secret", ""),
+            api_passphrase=row.get("api_passphrase", ""),
+        ),
+        signature_type=sig_type,
+        funder=funder_arg,
+    )
+    params = BalanceAllowanceParams(asset_type=AssetType.COLLATERAL, signature_type=sig_type)
+    for i in range(5):
+        try:
+            client.update_balance_allowance(params=params)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Sync {i+1}/5 falhou: {e!s}")
+        time.sleep(1.5)
+    return {"ok": True, "message": "Sync forçado 5x concluído. Tente o bot novamente."}
+
+
 @app.post("/api/set-allowances")
 def api_set_allowances(user: dict = Depends(get_current_user)):
     """Configura allowances on-chain para MetaMask (tipo 0). Necessário uma vez antes de operar via API."""
@@ -521,7 +620,8 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     env["POLY_API_KEY"] = row.get("api_key", "")
     env["POLY_API_SECRET"] = row.get("api_secret", "")
     env["POLY_API_PASSPHRASE"] = row.get("api_passphrase", "")
-    env["POLY_SIGNATURE_TYPE"] = str(row.get("signature_type", 0))
+    st = row.get("signature_type")
+    env["POLY_SIGNATURE_TYPE"] = str(int(st) if st is not None else 0)
     env["STARTING_BANKROLL"] = str(row.get("starting_bankroll", 10))
     env["MIN_BET"] = str(row.get("min_bet", 5))
     env["BOT_MODE"] = mode

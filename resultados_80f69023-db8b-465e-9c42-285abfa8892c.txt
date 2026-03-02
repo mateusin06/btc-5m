@@ -1795,30 +1795,7 @@ Próxima janela em 179s...
   Falha ao executar ordem.
 
 Próxima janela em 177s...
-ance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  Limit fallback falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
-  Falha ao executar ordem.
-
-Próxima janela em 179s...
-  Confiança 100.0% -> up
+  Confiança 100.0% -> down
   FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
   FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
   FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
@@ -1896,3 +1873,342 @@ Próxima janela em 180s...
   Falha ao executar ordem.
 
 Próxima janela em 180s...
+  Confiança 64.3% -> up
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Limit fallback falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Falha ao executar ordem.
+
+Próxima janela em 180s...
+  Confiança 92.9% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.97 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.97 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.97 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.97 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.97 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.97 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.97 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.97 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.97 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.97 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.97 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 92.9% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 78.6% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 78.6% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 78.6% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 78.6% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 78.6% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 78.6% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 78.6% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 78.6% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 78.6% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+  Confiança 78.6% -> up
+  Token @ $0.98 > 90c, pulando (max $0.95)
+  Confiança 78.6% -> up
+  Token @ $0.99 > 90c, pulando (max $0.95)
+
+Próxima janela em 40s...
+  Janela fecha em 240s... (slug: btc-updown-5m-1772485800)
+  Janela fecha em 180s... (slug: btc-updown-5m-1772485800)
+  Confiança 92.9% -> down
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Limit fallback falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Falha ao executar ordem.
+
+Próxima janela em 177s...
+  Confiança 92.9% -> down
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Limit fallback falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Falha ao executar ordem.
+
+Próxima janela em 180s...
+  Confiança 100.0% -> up
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Limit fallback falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Falha ao executar ordem.
+
+Próxima janela em 177s...
+  Confiança 92.9% -> down
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Limit fallback falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Falha ao executar ordem.
+
+Próxima janela em 177s...
+  SPIKE! Score 3.50 -> up
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Limit fallback falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Falha ao executar ordem.
+
+Próxima janela em 178s...
+Exception[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Limit fallback falhou: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Falha ao executar ordem.
+
+Próxima janela em 180s...
+  Confiança 92.9% -> down

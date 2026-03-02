@@ -48,6 +48,7 @@ MIN_SECS_TO_ENTER = 40
 TA_POLL_INTERVAL = 2
 SPIKE_THRESHOLD = 1.5
 ORDER_RETRY_INTERVAL = 3
+ORDER_MAX_FOK_RETRIES = 5  # Limite de retentativas FOK para não bloquear outros mercados (ex: ETH)
 MIN_SHARES = 5
 LIMIT_FALLBACK_PRICE = 0.95
 MAX_TOKEN_PRICE = float(os.getenv("MAX_TOKEN_PRICE", "0.98"))
@@ -118,7 +119,7 @@ def load_config() -> Config:
 
 
 def get_bankroll_from_api(client) -> Optional[float]:
-    """Obtém saldo USDC disponível via API CLOB."""
+    """Obtém saldo USDC disponível via API CLOB (em USD)."""
     try:
         from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
         sig_type = int(os.getenv("POLY_SIGNATURE_TYPE", "0"))
@@ -127,7 +128,11 @@ def get_bankroll_from_api(client) -> Optional[float]:
         if resp and isinstance(resp, dict):
             bal = resp.get("balance")
             if bal is not None:
-                return float(bal)
+                raw = float(bal)
+                # USDC usa 6 decimais: valor bruto / 1e6 = USD
+                if raw > 1000:
+                    raw = raw / 1e6
+                return raw
         return None
     except Exception:
         return None
@@ -190,13 +195,14 @@ def _check_ev_plus(
 
 
 def _sync_balance_allowance(client) -> None:
+    """Atualiza balance/allowance na API CLOB (necessário para proxy/safe)."""
     try:
         from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
         sig_type = int(os.getenv("POLY_SIGNATURE_TYPE", "0"))
         params = BalanceAllowanceParams(asset_type=AssetType.COLLATERAL, signature_type=sig_type)
         client.update_balance_allowance(params=params)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"  AVISO: update_balance_allowance falhou: {e!s}", flush=True)
 
 
 def place_fok_order(client, token_id: str, amount_usd: float) -> bool:
@@ -214,7 +220,8 @@ def place_fok_order(client, token_id: str, amount_usd: float) -> bool:
         signed = client.create_market_order(mo)
         resp = client.post_order(signed, OrderType.FOK)
         return resp.get("status") in ("matched", "live")
-    except Exception:
+    except Exception as e:
+        print(f"  FOK order error: {e!s}", flush=True)
         return False
 
 
@@ -232,7 +239,8 @@ def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
         signed = client.create_order(order)
         resp = client.post_order(signed, OrderType.GTC)
         return resp.get("status") in ("live", "matched")
-    except Exception:
+    except Exception as e:
+        print(f"  Limit order error: {e!s}", flush=True)
         return False
 
 
@@ -242,6 +250,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market
     from strategy import analyze
 
+    print(f"  [{market.upper()}] Iniciando ciclo...", flush=True)
     window_ts = get_window_ts()
     slug = f"{market}-updown-5m-{window_ts}"
     close_time = window_ts + WINDOW_SEC
@@ -375,6 +384,10 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     if bet_size > cap:
         bet_size = cap
 
+    if config.mode in ("aggressive", "arbitragem") and api_bankroll is not None:
+        pct = (config.arbitragem_bet_pct * 100) if config.mode == "arbitragem" else (MODES.get(config.mode, MODES["safe"]).get("bet_pct", 0.25) * 100)
+        print(f"  [{market.upper()}] Saldo API: ${api_bankroll:.2f} | aposta {pct:.0f}% = ${bet_size:.2f}", flush=True)
+
     if bet_size < config.min_bet:
         print(f"  [{market.upper()}] Bankroll insuficiente: ${cap:.2f} < min ${config.min_bet:.2f}", flush=True)
         return False
@@ -457,7 +470,10 @@ def run_trade_cycle(config: Config, market: str) -> bool:
 
     # 6. Executar ordem(s)
     client = create_clob_client()
-    _sync_balance_allowance(client)
+    # Sync agressivo para proxy/safe: API pode precisar de múltiplas chamadas para reconhecer allowance
+    for _ in range(2):
+        _sync_balance_allowance(client)
+        time.sleep(1)
     ok = False
     arb_first_one_fill = False
     arb_shares = None
@@ -484,10 +500,13 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                 trade_direction = "up"
 
     if not ok:
-        while int(time.time()) < close_time and not ok:
+        for _ in range(ORDER_MAX_FOK_RETRIES):
+            if int(time.time()) >= close_time:
+                break
             ok = place_fok_order(client, token_id, bet_size)
-            if not ok:
-                time.sleep(ORDER_RETRY_INTERVAL)
+            if ok:
+                break
+            time.sleep(ORDER_RETRY_INTERVAL)
         if not ok:
             ok = place_limit_order(client, token_id, bet_size)
 
@@ -511,7 +530,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                             return True
                     time.sleep(ARB_POLL_INTERVAL)
     else:
-        print(f"  [{market.upper()}] Falha ao executar ordem.", flush=True)
+        print(f"  [{market.upper()}] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)", flush=True)
 
     if ok and config.mode in ("safe", "only_hedge_plus", "aggressive"):
         _last_bet_window_by_market[market] = window_ts
@@ -614,6 +633,12 @@ def main():
             print("Modo arbitragem exige %%. Use --arbitragem-pct 25", flush=True, file=sys.stderr)
             sys.exit(1)
 
+    sig_type = int(os.getenv("POLY_SIGNATURE_TYPE", "0"))
+    funder = (os.getenv("POLY_FUNDER_ADDRESS") or "").strip()
+    funder_info = f"funder=0x...{funder[-4:]}" if len(funder) >= 4 else ("funder=nenhum" if not funder else "funder=ok")
+    print(f"Wallet: signature_type={sig_type} ({'EOA' if sig_type == 0 else 'Magic' if sig_type == 1 else 'Proxy/Safe'}) | {funder_info}", flush=True)
+    if funder and sig_type == 0:
+        print("  AVISO: Funder definido mas signature_type=0. Para Proxy/Safe use tipo 2 na Config.", flush=True)
     markets_str = "+".join(m.upper() for m in config.markets)
     print(f"Polymarket {markets_str} 5-Min Bot | Modo: {config.mode} | Dry-run: {config.dry_run}", flush=True)
     print(f"Min bet: ${config.min_bet:.2f} | Max token: 98c", flush=True)
