@@ -50,7 +50,6 @@ app.add_middleware(
 
 # Um processo do bot por usuário (user_id -> Popen)
 _bot_processes: dict[str, subprocess.Popen] = {}
-_bot_log_handles: dict[str, list] = {}
 
 # Um processo de auto-claim por usuário (user_id -> Popen)
 _autoclaim_processes: dict[str, subprocess.Popen] = {}
@@ -78,15 +77,9 @@ def _is_serverless() -> bool:
 
 
 def _cleanup_user_bot(user_id: str) -> None:
-    """Remove processo morto do usuário e fecha handles de log."""
+    """Remove processo morto do usuário."""
     proc = _bot_processes.get(user_id)
     if proc is not None and proc.poll() is not None:
-        for f in _bot_log_handles.get(user_id, []):
-            try:
-                f.close()
-            except Exception:
-                pass
-        _bot_log_handles.pop(user_id, None)
         _bot_processes.pop(user_id, None)
 
 
@@ -241,6 +234,7 @@ class ConfigResponse(BaseModel):
 class BotStartRequest(BaseModel):
     mode: Literal["safe", "aggressive", "dry_run", "arbitragem", "only_hedge_plus"] = Field(..., description="Modo de trading")
     dry_run: bool = Field(False, description="Se True, simula sem ordens reais")
+    markets: Literal["btc", "eth", "both"] = Field("btc", description="Mercado(s): btc, eth ou both")
     safe_bet: Optional[float] = None
     only_hedge_bet: Optional[float] = None
     aggressive_bet_pct: Optional[float] = None
@@ -257,17 +251,6 @@ class BotStatusResponse(BaseModel):
 class AutoclaimStatusResponse(BaseModel):
     running: bool
     pid: Optional[int] = None
-
-
-class StatsResponse(BaseModel):
-    period: str
-    trades: int
-    wins: int
-    losses: int
-    arbs: int
-    placed: int
-    total_pnl: float
-    win_rate_pct: Optional[float]
 
 
 def _read_env() -> dict[str, str]:
@@ -504,7 +487,7 @@ def api_set_allowances(user: dict = Depends(get_current_user)):
 @app.post("/api/bot/start")
 def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     """Inicia o bot com o modo e parâmetros informados; usa config do Supabase do usuário. Um bot por usuário."""
-    global _bot_processes, _bot_log_handles
+    global _bot_processes
     if _is_serverless():
         raise HTTPException(
             status_code=503,
@@ -538,11 +521,11 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     env["AGGRESSIVE_BET_PCT"] = str(int(req.aggressive_bet_pct if req.aggressive_bet_pct is not None else row.get("aggressive_bet_pct", 25)))
     env["MAX_TOKEN_PRICE"] = str(row.get("max_token_price", 0.9))
     env["ARB_MIN_PROFIT_PCT"] = str(row.get("arb_min_profit_pct", 0.04))
-    env["RESOLUTION_WAIT_SEC"] = "240"  # 4 min aguardando resolução pela Polymarket (hardcoded, não depende de .env)
+    env["BOT_MARKETS"] = req.markets
     safe_id = _safe_user_id(user["id"])
     env["BOT_USER_ID"] = safe_id
 
-    cmd = [sys.executable, str(PROJECT_ROOT / "bot.py"), "--mode", mode]
+    cmd = [sys.executable, str(PROJECT_ROOT / "bot.py"), "--mode", mode, "--markets", req.markets]
     if dry_run:
         cmd.append("--dry-run")
     if mode == "safe":
@@ -558,18 +541,11 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         if pct is not None:
             cmd.extend(["--arbitragem-pct", str(int(pct))])
 
-    log_path = PROJECT_ROOT / f"resultados_{safe_id}.txt"
-    with open(log_path, "a", encoding="utf-8") as log_file:
-        log_file.write(f"\n--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode} dry_run={dry_run} ---\n")
-    stdout_dest = open(log_path, "a", encoding="utf-8")
-    stderr_dest = open(log_path, "a", encoding="utf-8")
-    _bot_log_handles[user_id] = [stdout_dest, stderr_dest]
-
     proc = subprocess.Popen(
         cmd,
         cwd=str(PROJECT_ROOT),
-        stdout=stdout_dest,
-        stderr=stderr_dest,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         env=env,
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
     )
@@ -580,7 +556,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
 @app.post("/api/bot/stop")
 def bot_stop(user: dict = Depends(get_current_user)):
     """Para o bot deste usuário se estiver rodando."""
-    global _bot_processes, _bot_log_handles
+    global _bot_processes
     user_id = user["id"]
     proc = _bot_processes.get(user_id)
     if proc is None:
@@ -593,12 +569,6 @@ def bot_stop(user: dict = Depends(get_current_user)):
             proc.kill()
         except Exception:
             pass
-    for f in _bot_log_handles.get(user_id, []):
-        try:
-            f.close()
-        except Exception:
-            pass
-    _bot_log_handles.pop(user_id, None)
     _bot_processes.pop(user_id, None)
     return {"ok": True}
 
@@ -745,79 +715,6 @@ def claim_run_now(user: dict = Depends(get_current_user)):
         )
     result = run_claim(private_key=key, funder_address=funder, signature_type=sig_type)
     return result
-
-
-def _parse_trades(period: str, user_id: str) -> list[dict[str, Any]]:
-    safe_id = _safe_user_id(user_id)
-    trades_file = DATA_DIR / f"trades_{safe_id}.jsonl"
-    if not trades_file.exists():
-        return []
-    now = datetime.now(timezone.utc)
-    if period == "24h":
-        since = now - timedelta(hours=24)
-    elif period == "7d":
-        since = now - timedelta(days=7)
-    elif period == "30d":
-        since = now - timedelta(days=30)
-    else:
-        since = now - timedelta(days=30)
-
-    trades = []
-    with open(trades_file, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-                ts_str = rec.get("ts")
-                if ts_str:
-                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                    if ts < since:
-                        continue
-                trades.append(rec)
-            except Exception:
-                continue
-    return trades
-
-
-@app.get("/api/stats", response_model=StatsResponse)
-def get_stats(period: Literal["24h", "7d", "30d"] = "7d", user: dict = Depends(get_current_user)):
-    """Estatísticas por período (24h, 7d, 30d) do usuário."""
-    trades = _parse_trades(period, user["id"])
-    wins = sum(1 for t in trades if t.get("result") == "win")
-    losses = sum(1 for t in trades if t.get("result") == "loss")
-    arbs = sum(1 for t in trades if t.get("result") == "arb")
-    placed = sum(1 for t in trades if t.get("result") == "placed")
-    total_pnl = sum(float(t["pnl"]) for t in trades if t.get("pnl") is not None)
-    resolved = wins + losses + arbs
-    win_rate = (wins + arbs) / resolved * 100 if resolved else None
-
-    return StatsResponse(
-        period=period,
-        trades=len(trades),
-        wins=wins,
-        losses=losses,
-        arbs=arbs,
-        placed=placed,
-        total_pnl=round(total_pnl, 2),
-        win_rate_pct=round(win_rate, 1) if win_rate is not None else None,
-    )
-
-
-MAX_LOG_TAIL = 500
-
-@app.get("/api/logs")
-def get_logs(tail: int = 100, user: dict = Depends(get_current_user)):
-    """Últimas linhas do log do bot deste usuário."""
-    tail = max(1, min(int(tail), MAX_LOG_TAIL))
-    safe_id = _safe_user_id(user["id"])
-    log_path = PROJECT_ROOT / f"resultados_{safe_id}.txt"
-    if not log_path.exists():
-        return {"lines": []}
-    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-        lines = f.readlines()
-    return {"lines": [x.rstrip() for x in lines[-tail:]]}
 
 
 FRONTEND_DIR = PROJECT_ROOT / "frontend"

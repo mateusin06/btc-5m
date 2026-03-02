@@ -72,8 +72,6 @@
     <nav class="flex gap-6 border-b border-[#2d333b] mb-8">
       <button type="button" data-tab="config" class="tab pb-3 px-1 text-gray-400 hover:text-white tab-active">Config & API</button>
       <button type="button" data-tab="bot" class="tab pb-3 px-1 text-gray-400 hover:text-white">Iniciar bot</button>
-      <button type="button" data-tab="stats" class="tab pb-3 px-1 text-gray-400 hover:text-white">Estatísticas</button>
-      <button type="button" data-tab="logs" class="tab pb-3 px-1 text-gray-400 hover:text-white">Log</button>
     </nav>
 
     <!-- Tab: Config & API -->
@@ -206,6 +204,14 @@
         </div>
         <div class="grid gap-4 max-w-md">
           <div>
+            <label class="block text-sm text-gray-400 mb-1">Mercado(s)</label>
+            <select id="bot-markets" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2">
+              <option value="btc">Só BTC</option>
+              <option value="eth">Só ETH</option>
+              <option value="both">BTC e ETH</option>
+            </select>
+          </div>
+          <div>
             <label class="block text-sm text-gray-400 mb-1">Modo</label>
             <select id="bot-mode" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2">
               <option value="safe">Safe — aposta fixa em USD</option>
@@ -260,53 +266,6 @@
       </div>
     </section>
 
-    <!-- Tab: Stats -->
-    <section id="section-stats" class="hidden">
-      <div class="bg-panel rounded-xl border border-border p-6">
-        <h2 class="text-lg font-semibold text-white mb-4">Estatísticas por período</h2>
-        <div class="flex gap-2 mb-6">
-          <button type="button" data-period="24h" class="stats-period px-3 py-1.5 rounded-lg bg-[#0f1116] border border-border text-sm hover:border-accent">24h</button>
-          <button type="button" data-period="7d" class="stats-period px-3 py-1.5 rounded-lg bg-accent/20 border border-accent text-accent text-sm">7d</button>
-          <button type="button" data-period="30d" class="stats-period px-3 py-1.5 rounded-lg bg-[#0f1116] border border-border text-sm hover:border-accent">30d</button>
-        </div>
-        <div id="stats-placeholder" class="text-muted">Carregando...</div>
-        <div id="stats-cards" class="grid grid-cols-2 sm:grid-cols-3 gap-4 hidden">
-          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
-            <div class="text-sm text-gray-400">Trades</div>
-            <div id="stat-trades" class="text-xl font-semibold text-white">0</div>
-          </div>
-          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
-            <div class="text-sm text-gray-400">Vitórias</div>
-            <div id="stat-wins" class="text-xl font-semibold text-accent">0</div>
-          </div>
-          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
-            <div class="text-sm text-gray-400">Derrotas</div>
-            <div id="stat-losses" class="text-xl font-semibold text-danger">0</div>
-          </div>
-          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
-            <div class="text-sm text-gray-400">Arbs</div>
-            <div id="stat-arbs" class="text-xl font-semibold text-white">0</div>
-          </div>
-          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
-            <div class="text-sm text-gray-400">PnL total</div>
-            <div id="stat-pnl" class="text-xl font-semibold">$0.00</div>
-          </div>
-          <div class="bg-[#0f1116] rounded-lg border border-border p-4">
-            <div class="text-sm text-gray-400">Win rate</div>
-            <div id="stat-winrate" class="text-xl font-semibold text-white">—</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Tab: Logs -->
-    <section id="section-logs" class="hidden">
-      <div class="bg-panel rounded-xl border border-border p-6">
-        <h2 class="text-lg font-semibold text-white mb-4">Últimas linhas do log</h2>
-        <pre id="log-content" class="bg-[#0f1116] rounded-lg border border-border p-4 overflow-auto max-h-[400px] font-mono text-xs text-gray-300 whitespace-pre-wrap"></pre>
-        <button type="button" id="btn-refresh-logs" class="mt-2 text-sm text-accent hover:underline">Atualizar</button>
-      </div>
-    </section>
     </section>
   </div>
   <!-- fim dashboard -->
@@ -343,8 +302,6 @@
           getEl('auth-error').classList.add('hidden');
           loadConfig();
           refreshBotStatus();
-          loadStats();
-          loadLogs();
           refreshAutoclaimStatus();
           setInterval(refreshBotStatus, 5000);
           setInterval(refreshAutoclaimStatus, 5000);
@@ -388,8 +345,6 @@
       getEl('user-email').textContent = session.user?.email || '';
       loadConfig();
       refreshBotStatus();
-      loadStats();
-      loadLogs();
       refreshAutoclaimStatus();
     });
 
@@ -425,8 +380,6 @@
         getEl('user-email').textContent = session.user?.email || '';
         loadConfig();
         refreshBotStatus();
-        loadStats();
-        loadLogs();
         refreshAutoclaimStatus();
       } else {
         getEl('auth-error').textContent = 'Conta criada. Verifique seu e-mail para confirmar (ou faça login se já estiver ativo).';
@@ -442,7 +395,7 @@
     });
 
     function showSection(name) {
-      ['config','bot','stats','logs'].forEach(t => {
+      ['config','bot'].forEach(t => {
         const s = getEl('section-' + t);
         if (s) s.classList.toggle('hidden', t !== name);
       });
@@ -671,7 +624,8 @@
       const dryRun = getEl('bot-dry-run').checked;
       const body = {
         mode: mode === 'dry_run' ? 'dry_run' : mode,
-        dry_run: mode === 'dry_run' || dryRun
+        dry_run: mode === 'dry_run' || dryRun,
+        markets: getEl('bot-markets').value
       };
       if (mode === 'safe') {
         const v = parseFloat(getEl('bot-safe-bet').value);
@@ -789,57 +743,6 @@
         resultEl.classList.add('text-danger');
       }
     });
-
-    // --- Stats
-    let currentPeriod = '7d';
-    async function loadStats() {
-      getEl('stats-placeholder').classList.remove('hidden');
-      getEl('stats-cards').classList.add('hidden');
-      try {
-        const r = await fetch(API + '/api/stats?period=' + currentPeriod, { headers: authHeaders() });
-        if (r.status === 401) { window.location.reload(); return; }
-        const s = await r.json();
-        getEl('stats-placeholder').classList.add('hidden');
-        getEl('stats-cards').classList.remove('hidden');
-        getEl('stat-trades').textContent = s.trades;
-        getEl('stat-wins').textContent = s.wins;
-        getEl('stat-losses').textContent = s.losses;
-        getEl('stat-arbs').textContent = s.arbs;
-        const pnl = s.total_pnl ?? 0;
-        const pnlEl = getEl('stat-pnl');
-        pnlEl.textContent = '$' + pnl.toFixed(2);
-        pnlEl.className = 'text-xl font-semibold ' + (pnl >= 0 ? 'text-accent' : 'text-danger');
-        getEl('stat-winrate').textContent = s.win_rate_pct != null ? s.win_rate_pct + '%' : '—';
-      } catch (e) {
-        getEl('stats-placeholder').textContent = 'Erro ao carregar estatísticas.';
-      }
-    }
-
-    document.querySelectorAll('.stats-period').forEach(btn => {
-      btn.addEventListener('click', () => {
-        currentPeriod = btn.dataset.period;
-        document.querySelectorAll('.stats-period').forEach(b => {
-          b.classList.remove('bg-accent/20', 'border-accent', 'text-accent');
-          b.classList.add('bg-[#0f1116]', 'border-border');
-        });
-        btn.classList.remove('bg-[#0f1116]', 'border-border');
-        btn.classList.add('bg-accent/20', 'border-accent', 'text-accent');
-        loadStats();
-      });
-    });
-
-    // --- Logs
-    async function loadLogs() {
-      try {
-        const r = await fetch(API + '/api/logs?tail=150', { headers: authHeaders() });
-        if (r.status === 401) return;
-        const d = await r.json();
-        getEl('log-content').textContent = (d.lines && d.lines.length) ? d.lines.join('\n') : '(vazio)';
-      } catch (e) {
-        getEl('log-content').textContent = 'Erro: ' + e.message;
-      }
-    }
-    getEl('btn-refresh-logs').addEventListener('click', loadLogs);
 
     // --- Init (chamado após login em initSupabase)
     initSupabase();
