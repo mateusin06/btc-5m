@@ -1,7 +1,8 @@
 py-clob-client>=0.34.5
 python-dotenv>=1.0.0
 requests>=2.31.0
-playwright>=1.40.0
+web3>=6.0.0
+playwright>=1.40.0  # opcional: só para auto_claim.py (claim via browser)
 openpyxl>=3.1.0
 fastapi>=0.109.0
 uvicorn>=0.27.0

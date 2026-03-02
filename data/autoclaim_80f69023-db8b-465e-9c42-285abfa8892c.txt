@@ -5,3 +5,41 @@ Abrindo navegador...
 Acesse polymarket.com/portfolio e faça login se necessário.
 O script irá verificar a página a cada 60s para claims disponíveis.
 Pressione Ctrl+C para encerrar.
+
+--- Auto-claim (claim por API) iniciado em 2026-03-01T19:55:34.010402+00:00 ---
+run_claim error
+Traceback (most recent call last):
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\claim_api.py", line 89, in run_claim
+    web3 = PolymarketWeb3Client(
+           ^^^^^^^^^^^^^^^^^^^^^
+TypeError: PolymarketWeb3Client.__init__() got an unexpected keyword argument 'funder'
+Erro: PolymarketWeb3Client.__init__() got an unexpected keyword argument 'funder'
+  Erro: PolymarketWeb3Client.__init__() got an unexpected keyword argument 'funder'
+
+--- Auto-claim (claim por API) iniciado em 2026-03-01T19:56:06.794403+00:00 ---
+run_claim error
+Traceback (most recent call last):
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\claim_api.py", line 89, in run_claim
+    web3 = PolymarketWeb3Client(
+           ^^^^^^^^^^^^^^^^^^^^^
+TypeError: PolymarketWeb3Client.__init__() got an unexpected keyword argument 'funder'
+Erro: PolymarketWeb3Client.__init__() got an unexpected keyword argument 'funder'
+  Erro: PolymarketWeb3Client.__init__() got an unexpected keyword argument 'funder'
+
+--- Auto-claim (claim por API) iniciado em 2026-03-01T21:14:33.052671+00:00 ---
+run_claim error
+Traceback (most recent call last):
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\claim_api.py", line 89, in run_claim
+    web3 = PolymarketWeb3Client(
+           ^^^^^^^^^^^^^^^^^^^^^
+TypeError: PolymarketWeb3Client.__init__() got an unexpected keyword argument 'funder'
+Erro: PolymarketWeb3Client.__init__() got an unexpected keyword argument 'funder'
+  Erro: PolymarketWeb3Client.__init__() got an unexpected keyword argument 'funder'
+
+--- Auto-claim (claim por API) iniciado em 2026-03-01T21:18:46.075099+00:00 ---
+Claim por API iniciado (intervalo 300 s).
+Nenhuma posição para resgatar.
+
+--- Auto-claim (claim por API) iniciado em 2026-03-01T21:20:31.035043+00:00 ---
+Claim por API iniciado (intervalo 300 s).
+Nenhuma posição para resgatar.

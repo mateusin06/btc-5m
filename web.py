@@ -223,6 +223,7 @@ class ConfigUpdate(BaseModel):
 
 class ConfigResponse(BaseModel):
     funder_address: str
+    signature_type: int = 0
     starting_bankroll: float
     min_bet: float
     bot_mode: str
@@ -323,12 +324,15 @@ def _derive_creds(private_key: str, funder_address: str = "", signature_type: in
     if not key or key == "0x...":
         raise ValueError("Chave privada inválida")
 
+    # EOA (0): não passar funder — credenciais devem ser do endereço da chave.
+    funder_arg = (funder_address.strip() or None) if signature_type in (1, 2) else None
+
     client = ClobClient(
         CLOB_HOST,
         chain_id=CHAIN_ID,
         key=key,
         signature_type=signature_type,
-        funder=funder_address.strip() or None,
+        funder=funder_arg,
     )
     creds = client.create_or_derive_api_creds()
     if not creds:
@@ -365,6 +369,7 @@ def get_config(user: dict = Depends(get_current_user)):
     if not row:
         return ConfigResponse(
             funder_address="",
+            signature_type=0,
             starting_bankroll=10.0,
             min_bet=5.0,
             bot_mode="safe",
@@ -378,6 +383,7 @@ def get_config(user: dict = Depends(get_current_user)):
         )
     return ConfigResponse(
         funder_address=row.get("funder_address") or "",
+        signature_type=int(row.get("signature_type", 0)),
         starting_bankroll=float(row.get("starting_bankroll", 10)),
         min_bet=float(row.get("min_bet", 5)),
         bot_mode=row.get("bot_mode") or "safe",
@@ -425,6 +431,57 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
         data["arbitragem_pct"] = int(upd.arbitragem_pct)
     _config_to_supabase(user["id"], user["_token"], data, user.get("email"))
     return {"ok": True}
+
+
+@app.get("/api/trading-address")
+@app.post("/api/trading-address")
+def get_trading_address(user: dict = Depends(get_current_user)):
+    """Retorna o endereço que o bot usa para ordens (para comparar com o Portfolio na Polymarket)."""
+    row = _config_from_supabase(user["id"], user["_token"])
+    if not row or not row.get("private_key") or str(row.get("private_key", "")).strip() in ("", "0x..."):
+        raise HTTPException(status_code=400, detail="Salve a chave privada na Config primeiro.")
+    try:
+        from py_clob_client.client import ClobClient
+    except ImportError:
+        raise HTTPException(status_code=503, detail="py_clob_client não instalado.")
+    key = (row.get("private_key") or "").strip()
+    sig_type = int(row.get("signature_type", 0))
+    funder = (row.get("funder_address") or "").strip()
+    funder_arg = (funder or None) if sig_type in (1, 2) else None
+    client = ClobClient(
+        CLOB_HOST,
+        chain_id=CHAIN_ID,
+        key=key,
+        signature_type=sig_type,
+        funder=funder_arg,
+    )
+    addr = client.get_address()
+    if not addr:
+        raise HTTPException(status_code=500, detail="Não foi possível obter o endereço.")
+    return {"address": addr}
+
+
+@app.post("/api/set-allowances")
+def api_set_allowances(user: dict = Depends(get_current_user)):
+    """Configura allowances on-chain para MetaMask (tipo 0). Necessário uma vez antes de operar via API."""
+    row = _config_from_supabase(user["id"], user["_token"])
+    if not row or not row.get("private_key") or str(row.get("private_key", "")).strip() in ("", "0x..."):
+        raise HTTPException(status_code=400, detail="Salve a chave privada na Config primeiro.")
+    sig_type = int(row.get("signature_type", 0))
+    if sig_type != 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Allowances são necessários só para MetaMask (tipo 0). Magic/Safe configuram automaticamente.",
+        )
+    try:
+        from set_allowances import run_set_allowances
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Módulo set_allowances não encontrado.")
+    key = (row.get("private_key") or "").strip()
+    ok, msg, details = run_set_allowances(key)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"ok": True, "message": msg, "details": details}
 
 
 @app.post("/api/bot/start")

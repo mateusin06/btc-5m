@@ -154,12 +154,17 @@ def create_clob_client():
     if not key or key == "0x...":
         raise ValueError("Defina POLY_PRIVATE_KEY no .env")
 
+    # EOA (0): não passar funder — o maker é o endereço da chave. Outro endereço aqui causa "invalid signature".
+    funder_arg = None
+    if sig_type in (1, 2) and funder:
+        funder_arg = funder
+
     client = ClobClient(
         CLOB_HOST,
         chain_id=CHAIN_ID,
         key=key,
         signature_type=sig_type,
-        funder=funder if funder else None,
+        funder=funder_arg,
     )
 
     if api_key and api_secret and api_pass:

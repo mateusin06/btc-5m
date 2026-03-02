@@ -105,9 +105,31 @@
             <p class="text-xs text-muted mb-1">Na Polymarket: vá em Portfolio e use &quot;Copy address&quot; — é esse endereço.</p>
             <input type="text" id="input-funder" placeholder="0x..." class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2 font-mono text-sm" />
           </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Tipo de carteira</label>
+            <p class="text-xs text-muted mb-1">Deve bater com a forma que você usa na Polymarket. Metamask = 0.</p>
+            <select id="input-signature-type" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2">
+              <option value="0">0 — Metamask (EOA)</option>
+              <option value="1">1 — Magic / Email</option>
+              <option value="2">2 — Safe / Proxy</option>
+            </select>
+          </div>
           <div class="flex gap-3">
             <button type="button" id="btn-derive" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90">Gerar API</button>
             <span id="derive-status" class="text-sm text-muted self-center"></span>
+          </div>
+          <div id="trading-address-wrap" class="hidden rounded-lg bg-[#0f1116] p-3 border border-border">
+            <p class="text-sm text-gray-400 mb-1">Endereço que o bot usa para ordens (deve ser o mesmo do Portfolio na Polymarket):</p>
+            <code id="trading-address-out" class="font-mono text-xs break-all text-accent"></code>
+            <p class="text-xs text-muted mt-2">Se for diferente do endereço do seu Portfolio, o bot verá saldo zero → &quot;not enough balance&quot;. Use a chave privada da carteira que tem o depósito.</p>
+          </div>
+          <div id="allowances-wrap" class="hidden">
+            <p class="text-sm text-muted mb-2">MetaMask: se o bot retornar &quot;not enough balance / allowance&quot;, configure os allowances (uma vez):</p>
+            <div class="flex gap-3 items-center">
+              <button type="button" id="btn-set-allowances" class="px-4 py-2 bg-[#2d333b] text-white font-medium rounded-lg hover:bg-[#3d434b] border border-border">Configurar allowances</button>
+              <span id="allowances-status" class="text-sm text-muted"></span>
+            </div>
+            <p class="text-xs text-muted mt-1">Requer MATIC/POL na carteira (Polygon) para gas. Pode levar ~30s.</p>
           </div>
           <div id="creds-out" class="hidden space-y-2 rounded-lg bg-[#0f1116] p-3 border border-border">
             <div class="flex justify-between items-center gap-2">
@@ -441,6 +463,8 @@
         if (r.status === 401) { window.location.reload(); return; }
         const c = await r.json();
         getEl('input-funder').value = c.funder_address || '';
+        const sigType = c.signature_type !== undefined && c.signature_type !== null ? Number(c.signature_type) : 0;
+        getEl('input-signature-type').value = String(sigType);
         getEl('cfg-bankroll').value = c.starting_bankroll ?? 10;
         getEl('cfg-min-bet').value = c.min_bet ?? 5;
         getEl('cfg-aggressive-pct').value = c.aggressive_bet_pct ?? 25;
@@ -453,6 +477,28 @@
         if (c.aggressive_bet_pct != null) getEl('bot-aggressive-pct').value = c.aggressive_bet_pct;
       } catch (e) {
         console.error(e);
+      }
+      // Mostrar endereço de trading para comparar com o Portfolio (só se já tem chave salva)
+      const wrap = getEl('trading-address-wrap');
+      const allowancesWrap = getEl('allowances-wrap');
+      if (c.has_private_key) {
+        try {
+          const tr = await fetch(API + '/api/trading-address', { method: 'POST', headers: authHeaders() });
+          if (tr.ok) {
+            const j = await tr.json();
+            getEl('trading-address-out').textContent = j.address || '';
+            wrap.classList.remove('hidden');
+          } else { wrap.classList.add('hidden'); }
+        } catch (_) { wrap.classList.add('hidden'); }
+        // Mostrar botão de allowances só para MetaMask (tipo 0)
+        if (sigType === 0) {
+          allowancesWrap.classList.remove('hidden');
+        } else {
+          allowancesWrap.classList.add('hidden');
+        }
+      } else {
+        wrap.classList.add('hidden');
+        allowancesWrap.classList.add('hidden');
       }
     }
 
@@ -470,7 +516,11 @@
         const r = await fetch(API + '/api/derive-creds', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ private_key: key, funder_address: funder, signature_type: 1 })
+          body: JSON.stringify({
+            private_key: key,
+            funder_address: funder,
+            signature_type: parseInt(getEl('input-signature-type').value, 10) || 0
+          })
         });
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
@@ -485,6 +535,26 @@
         window._lastCreds = creds;
       } catch (e) {
         status.textContent = 'Erro: ' + e.message;
+      }
+    });
+
+    // --- Configurar allowances (MetaMask)
+    getEl('btn-set-allowances').addEventListener('click', async () => {
+      const status = getEl('allowances-status');
+      status.textContent = 'Configurando... (pode levar ~30s)';
+      try {
+        const r = await fetch(API + '/api/set-allowances', { method: 'POST', headers: authHeaders() });
+        const data = await r.json().catch(() => ({}));
+        if (r.ok && data.ok) {
+          status.textContent = '✓ ' + (data.message || 'Concluído');
+          status.classList.add('text-accent');
+        } else {
+          status.textContent = 'Erro: ' + (data.detail || data.message || r.statusText);
+          status.classList.remove('text-accent');
+        }
+      } catch (e) {
+        status.textContent = 'Erro: ' + e.message;
+        status.classList.remove('text-accent');
       }
     });
 
@@ -505,6 +575,7 @@
       const status = getEl('save-config-status');
       const payload = {
         funder_address: getEl('input-funder').value.trim(),
+        signature_type: parseInt(getEl('input-signature-type').value, 10) || 0,
         starting_bankroll: parseFloat(getEl('cfg-bankroll').value) || 10,
         min_bet: parseFloat(getEl('cfg-min-bet').value) || 5,
         aggressive_bet_pct: parseFloat(getEl('cfg-aggressive-pct').value) || 25,
