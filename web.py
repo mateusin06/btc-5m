@@ -213,11 +213,12 @@ class ConfigUpdate(BaseModel):
     api_passphrase: Optional[str] = None
     starting_bankroll: Optional[float] = None
     min_bet: Optional[float] = None
-    bot_mode: Optional[Literal["safe", "aggressive", "degen", "arbitragem"]] = None
+    bot_mode: Optional[Literal["safe", "aggressive", "degen", "arbitragem", "only_hedge_plus"]] = None
     aggressive_bet_pct: Optional[float] = None
     max_token_price: Optional[float] = None
     arb_min_profit_pct: Optional[float] = None
     safe_bet: Optional[float] = None
+    only_hedge_bet: Optional[float] = None
     arbitragem_pct: Optional[float] = None
 
 
@@ -231,15 +232,17 @@ class ConfigResponse(BaseModel):
     max_token_price: float
     arb_min_profit_pct: float
     safe_bet: Optional[float] = None
+    only_hedge_bet: Optional[float] = None
     arbitragem_pct: Optional[float] = None
     has_private_key: bool
     has_api_creds: bool
 
 
 class BotStartRequest(BaseModel):
-    mode: Literal["safe", "aggressive", "dry_run", "arbitragem"] = Field(..., description="Modo de trading")
+    mode: Literal["safe", "aggressive", "dry_run", "arbitragem", "only_hedge_plus"] = Field(..., description="Modo de trading")
     dry_run: bool = Field(False, description="Se True, simula sem ordens reais")
     safe_bet: Optional[float] = None
+    only_hedge_bet: Optional[float] = None
     aggressive_bet_pct: Optional[float] = None
     arbitragem_pct: Optional[float] = None
 
@@ -377,6 +380,7 @@ def get_config(user: dict = Depends(get_current_user)):
             max_token_price=0.9,
             arb_min_profit_pct=0.04,
             safe_bet=None,
+            only_hedge_bet=None,
             arbitragem_pct=None,
             has_private_key=False,
             has_api_creds=False,
@@ -391,6 +395,7 @@ def get_config(user: dict = Depends(get_current_user)):
         max_token_price=float(row.get("max_token_price", 0.9)),
         arb_min_profit_pct=float(row.get("arb_min_profit_pct", 0.04)),
         safe_bet=row.get("safe_bet") and float(row["safe_bet"]) or None,
+        only_hedge_bet=row.get("only_hedge_bet") and float(row["only_hedge_bet"]) or None,
         arbitragem_pct=row.get("arbitragem_pct") and float(row["arbitragem_pct"]) or None,
         has_private_key=bool(row.get("private_key") and str(row.get("private_key", "")).strip() and row.get("private_key") != "0x..."),
         has_api_creds=bool(row.get("api_key") and row.get("api_secret") and row.get("api_passphrase")),
@@ -427,6 +432,8 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
         data["arb_min_profit_pct"] = upd.arb_min_profit_pct
     if upd.safe_bet is not None:
         data["safe_bet"] = upd.safe_bet
+    if upd.only_hedge_bet is not None:
+        data["only_hedge_bet"] = upd.only_hedge_bet
     if upd.arbitragem_pct is not None:
         data["arbitragem_pct"] = int(upd.arbitragem_pct)
     _config_to_supabase(user["id"], user["_token"], data, user.get("email"))
@@ -531,6 +538,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     env["AGGRESSIVE_BET_PCT"] = str(int(req.aggressive_bet_pct if req.aggressive_bet_pct is not None else row.get("aggressive_bet_pct", 25)))
     env["MAX_TOKEN_PRICE"] = str(row.get("max_token_price", 0.9))
     env["ARB_MIN_PROFIT_PCT"] = str(row.get("arb_min_profit_pct", 0.04))
+    env["RESOLUTION_WAIT_SEC"] = "240"  # 4 min aguardando resolução pela Polymarket (hardcoded, não depende de .env)
     safe_id = _safe_user_id(user["id"])
     env["BOT_USER_ID"] = safe_id
 
@@ -541,6 +549,10 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         bet = req.safe_bet if req.safe_bet is not None else row.get("safe_bet")
         if bet is not None:
             cmd.extend(["--safe-bet", str(bet)])
+    if mode == "only_hedge_plus":
+        bet = req.only_hedge_bet if req.only_hedge_bet is not None else row.get("only_hedge_bet")
+        if bet is not None:
+            cmd.extend(["--only-hedge-bet", str(bet)])
     if mode == "arbitragem":
         pct = req.arbitragem_pct if req.arbitragem_pct is not None else row.get("arbitragem_pct")
         if pct is not None:

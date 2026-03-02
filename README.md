@@ -144,6 +144,7 @@ python bot.py --dry-run --mode arbitragem --arbitragem-pct 25
 |------|--------|--------------|----------------|
 | **safe** | Valor fixo em USD (perguntado ou `--safe-bet`) | Últimos 2 min | 30% |
 | **aggressive** | 25% da banca (ou só lucros se bankroll > inicial) | Últimos 2 min | 50% |
+| **only_hedge_plus** | Valor fixo em USD | Últimos 2 min | Só entra com EV+ (P(win) > preço + 2%) |
 | **degen** | 100% da banca | Últimos 2 min | 0% |
 | **arbitragem** | % da banca (perguntado ou `--arbitragem-pct`) | **Desde o início da janela** | 30% — prioriza arb pura; senão aposta direcional + hedge; sem hedge = aposta normal |
 

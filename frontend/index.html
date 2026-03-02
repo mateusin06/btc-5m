@@ -173,6 +173,10 @@
             <input type="number" id="cfg-aggressive-pct" min="1" max="100" placeholder="25" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
           </div>
           <div>
+            <label class="block text-sm text-gray-400 mb-1">Only Hedge+ — valor fixo (USD)</label>
+            <input type="number" id="cfg-only-hedge-bet" step="0.01" min="0" placeholder="ex: 5" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div>
             <label class="block text-sm text-gray-400 mb-1">Arbitragem — % da banca</label>
             <input type="number" id="cfg-arbitragem-pct" min="1" max="100" placeholder="25" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
           </div>
@@ -206,6 +210,7 @@
             <select id="bot-mode" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2">
               <option value="safe">Safe — aposta fixa em USD</option>
               <option value="aggressive">Agressivo — % da banca</option>
+              <option value="only_hedge_plus">Only Hedge+ — só entra com EV+</option>
               <option value="dry_run">Dry run — simulação (sem ordens reais)</option>
               <option value="arbitragem">Arbitragem — % da banca</option>
             </select>
@@ -217,6 +222,10 @@
           <div id="wrap-aggressive-pct" class="hidden">
             <label class="block text-sm text-gray-400 mb-1">% da banca (Agressivo)</label>
             <input type="number" id="bot-aggressive-pct" min="1" max="100" placeholder="25" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div id="wrap-only-hedge-bet" class="hidden">
+            <label class="block text-sm text-gray-400 mb-1">Aposta fixa (USD) — Only Hedge+</label>
+            <input type="number" id="bot-only-hedge-bet" step="0.01" min="0" placeholder="5" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
           </div>
           <div id="wrap-arbitragem-pct" class="hidden">
             <label class="block text-sm text-gray-400 mb-1">% da banca (Arbitragem)</label>
@@ -473,8 +482,10 @@
         getEl('cfg-max-token').value = c.max_token_price ?? 0.9;
         getEl('cfg-arb-min-pct').value = ((c.arb_min_profit_pct ?? 0.04) * 100);
         if (c.safe_bet != null) getEl('cfg-safe-bet').value = c.safe_bet;
+        if (c.only_hedge_bet != null) getEl('cfg-only-hedge-bet').value = c.only_hedge_bet;
         if (c.arbitragem_pct != null) getEl('cfg-arbitragem-pct').value = c.arbitragem_pct;
         if (c.safe_bet != null) getEl('bot-safe-bet').value = c.safe_bet;
+        if (c.only_hedge_bet != null) getEl('bot-only-hedge-bet').value = c.only_hedge_bet;
         if (c.arbitragem_pct != null) getEl('bot-arbitragem-pct').value = c.arbitragem_pct;
         if (c.aggressive_bet_pct != null) getEl('bot-aggressive-pct').value = c.aggressive_bet_pct;
       } catch (e) {
@@ -598,6 +609,8 @@
       }
       const safeBet = parseFloat(getEl('cfg-safe-bet').value);
       if (!isNaN(safeBet) && safeBet > 0) payload.safe_bet = safeBet;
+      const onlyHedgeBet = parseFloat(getEl('cfg-only-hedge-bet').value);
+      if (!isNaN(onlyHedgeBet) && onlyHedgeBet > 0) payload.only_hedge_bet = onlyHedgeBet;
       const arbPct = parseFloat(getEl('cfg-arbitragem-pct').value);
       if (!isNaN(arbPct) && arbPct > 0) payload.arbitragem_pct = arbPct;
       try {
@@ -620,6 +633,7 @@
       const v = botMode.value;
       getEl('wrap-safe-bet').classList.toggle('hidden', v !== 'safe');
       getEl('wrap-aggressive-pct').classList.toggle('hidden', v !== 'aggressive');
+      getEl('wrap-only-hedge-bet').classList.toggle('hidden', v !== 'only_hedge_plus');
       getEl('wrap-arbitragem-pct').classList.toggle('hidden', v !== 'arbitragem');
       getEl('wrap-dry-run').classList.toggle('hidden', v !== 'dry_run');
     }
@@ -666,6 +680,10 @@
       if (mode === 'aggressive') {
         const v = parseFloat(getEl('bot-aggressive-pct').value);
         if (!isNaN(v)) body.aggressive_bet_pct = v;
+      }
+      if (mode === 'only_hedge_plus') {
+        const v = parseFloat(getEl('bot-only-hedge-bet').value);
+        if (!isNaN(v)) body.only_hedge_bet = v;
       }
       if (mode === 'arbitragem') {
         const v = parseFloat(getEl('bot-arbitragem-pct').value);

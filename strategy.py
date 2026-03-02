@@ -19,15 +19,20 @@ WEIGHT_VOLUME_SURGE = 1
 WEIGHT_TICK_TREND = 2
 
 
+# Score máximo aproximado para normalização (soma dos pesos)
+MAX_SCORE = 7.0
+
+
 @dataclass
 class AnalysisResult:
-    """Resultado da análise com score e confiança."""
+    """Resultado da análise com score, confiança e P(Up) estimada para EV+."""
 
     score: float
     confidence: float
     direction: str  # "up" ou "down"
     window_delta_pct: float
     details: dict
+    estimated_p_up: float = 0.5  # P(Up) estimada para checagem EV+
 
 
 def _ema(values: list[float], period: int) -> float:
@@ -109,13 +114,17 @@ def analyze(
     details["window_delta_weight"] = wd_weight
 
     if not candles_1m or len(candles_1m) < 3:
-        confidence = min(abs(score) / 7.0, 1.0)
+        confidence = min(abs(score) / MAX_SCORE, 1.0)
+        norm = max(-MAX_SCORE, min(MAX_SCORE, score))
+        p_up = 0.5 + 0.4 * (norm / MAX_SCORE)
+        p_up = max(0.1, min(0.9, p_up))
         return AnalysisResult(
             score=score,
             confidence=confidence,
             direction="up" if score >= 0 else "down",
             window_delta_pct=delta_pct,
             details=details,
+            estimated_p_up=p_up,
         )
 
     prices = [c["c"] for c in candles_1m]
@@ -173,11 +182,15 @@ def analyze(
             score += tick_dir * WEIGHT_TICK_TREND
             details["tick_trend"] = tick_dir
 
-    confidence = min(abs(score) / 7.0, 1.0)
+    confidence = min(abs(score) / MAX_SCORE, 1.0)
+    norm = max(-MAX_SCORE, min(MAX_SCORE, score))
+    p_up = 0.5 + 0.4 * (norm / MAX_SCORE)
+    p_up = max(0.1, min(0.9, p_up))
     return AnalysisResult(
         score=score,
         confidence=confidence,
         direction="up" if score >= 0 else "down",
         window_delta_pct=delta_pct,
         details=details,
+        estimated_p_up=p_up,
     )

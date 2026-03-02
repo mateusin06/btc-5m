@@ -25,7 +25,9 @@ MODES = {
     "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.50},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},  # bet_pct definido no início pelo usuário
+    "only_hedge_plus": {"min_confidence": 0.30},  # entrada só com EV+ (P(win) > preço + margem)
 }
+EV_MIN_MARGIN = 0.02  # margem mínima para considerar EV+ (2% acima do preço)
 ARB_MIN_PROFIT_PCT = float(os.getenv("ARB_MIN_PROFIT_PCT", "0.04"))  # lucro mínimo (ex: 0.04 = 4%); aceitar 2–3% encontra mais arbs
 ARB_POLL_INTERVAL = 1  # verificar preço do outro lado a cada 1s (mais chances de pegar oportunidade)
 ARB_DEADLINE_T = 10  # para de tentar hedge N s antes do fechamento
@@ -35,7 +37,9 @@ CHAIN_ID = 137
 WINDOW_SEC = 300
 MONITOR_START_T = 120  # começa a monitorar 2 min antes do fechamento (opera só se faltar 2 min ou menos)
 HARD_DEADLINE_T = 5
+MIN_SECS_TO_ENTER = 40  # mínimo de segundos restantes para ainda entrar na janela atual (após resolução)
 TA_POLL_INTERVAL = 2
+RESOLUTION_WAIT_SEC = int(os.getenv("RESOLUTION_WAIT_SEC", "240"))  # até 4 min aguardando Polymarket
 SPIKE_THRESHOLD = 1.5
 ORDER_RETRY_INTERVAL = 3
 MIN_SHARES = 5
@@ -54,6 +58,7 @@ class Config:
     original_bankroll: float
     fixed_bet_safe: Optional[float] = None  # valor fixo em $ no modo safe (perguntado no início)
     arbitragem_bet_pct: Optional[float] = None  # % da banca no modo arbitragem (perguntado no início)
+    fixed_bet_only_hedge: Optional[float] = None  # valor fixo em $ no modo only_hedge_plus
 
 
 def delta_to_token_price(delta_pct: float) -> float:
@@ -175,6 +180,32 @@ def create_clob_client():
     return client
 
 
+def _check_ev_plus(
+    direction: str,
+    result,
+    tokens: Optional[list],
+    event: Optional[dict],
+) -> bool:
+    """
+    Verifica se a entrada tem EV+ (P(win) > preço + margem).
+    Retorna True apenas se houver edge.
+    """
+    if not tokens or len(tokens) < 2 or not result:
+        return False
+    from api import get_token_price, get_token_price_from_event
+
+    token_id = tokens[0] if direction == "up" else tokens[1]
+    price = get_token_price(token_id, "BUY") or (
+        get_token_price_from_event(event, direction) if event else None
+    )
+    if price is None or price <= 0 or price >= 1:
+        return False
+    p_up = getattr(result, "estimated_p_up", 0.5)
+    if direction == "up":
+        return p_up > price + EV_MIN_MARGIN
+    return (1 - p_up) > price + EV_MIN_MARGIN
+
+
 def _sync_balance_allowance(client) -> None:
     """Atualiza balance/allowance na API CLOB antes de operar. Necessário para evitar 'not enough balance/allowance'."""
     try:
@@ -197,10 +228,10 @@ def _resolve_trade_and_update(
     config: Config,
 ) -> bool:
     """
-    Aguarda resolução da janela, atualiza bankroll e registra win/loss.
-    Retorna True se conseguiu resolver.
+    Aguarda resolução da janela pela Polymarket, atualiza bankroll e registra win/loss.
+    Usa APENAS a Polymarket (Gamma API) para garantir que o resultado bata com o site.
     """
-    from api import get_price_to_beat, get_window_resolution_polymarket, get_window_resolution_binance
+    from api import get_window_resolution_polymarket
 
     close_time = window_ts + WINDOW_SEC
     wait_secs = max(0, close_time - int(time.time()) + 2)
@@ -208,27 +239,15 @@ def _resolve_trade_and_update(
         print(f"  Aguardando fechamento da janela ({wait_secs}s)...", flush=True)
         time.sleep(wait_secs)
 
-    next_window_ts = window_ts + WINDOW_SEC
-    slug_next = f"btc-updown-5m-{next_window_ts}"
+    print(f"  Aguardando resolução pela Polymarket (até {RESOLUTION_WAIT_SEC}s)...", flush=True)
     up_wins = None
-    for _ in range(60):
-        open_chainlink = get_price_to_beat(slug)
-        close_chainlink = get_price_to_beat(slug_next)
-        if open_chainlink is not None and close_chainlink is not None:
-            up_wins = close_chainlink >= open_chainlink
-            break
-        if close_chainlink is not None:
-            up_wins = close_chainlink >= window_open
+    for _ in range(RESOLUTION_WAIT_SEC // TA_POLL_INTERVAL):
+        up_wins = get_window_resolution_polymarket(slug)
+        if up_wins is not None:
             break
         time.sleep(2)
     if up_wins is None:
-        up_wins = get_window_resolution_polymarket(slug)
-    if up_wins is None:
-        up_wins = get_window_resolution_binance(window_ts)
-        if up_wins is not None:
-            print("  (resolução via Binance; Price to Beat ainda não disponível)", flush=True)
-    if up_wins is None:
-        print("  Não foi possível verificar resolução.", flush=True)
+        print("  Não foi possível verificar resolução pela Polymarket.", flush=True)
         return False
     shares = bet_size / real_price
     won = (trade_direction == "up" and up_wins) or (trade_direction == "down" and not up_wins)
@@ -314,7 +333,7 @@ def place_sell_order(client, token_id: str, shares: float, min_price: float) -> 
 
 def run_trade_cycle(config: Config) -> bool:
     """Executa um ciclo completo: espera, analisa, opera, resolve."""
-    from api import get_btc_price, get_btc_candles_1m, get_market_by_slug, extract_token_ids, get_window_resolution_binance
+    from api import get_btc_price, get_btc_candles_1m, get_market_by_slug, extract_token_ids
     from strategy import analyze
 
     window_ts = get_window_ts()
@@ -346,6 +365,10 @@ def run_trade_cycle(config: Config) -> bool:
         print("  ERRO: Não foi possível obter preço de abertura.", flush=True)
         return False
 
+    # Buscar mercado cedo (necessário para only_hedge_plus checar EV+ no loop)
+    event = get_market_by_slug(slug)
+    tokens = extract_token_ids(event) if event else None
+
     # 3. Loop TA até T-5s (dispara assim que spike ou confiança atingir)
     tick_prices = []
     best_score = 0.0
@@ -374,17 +397,29 @@ def run_trade_cycle(config: Config) -> bool:
         if abs(result.score - prev_score) >= SPIKE_THRESHOLD and prev_score != 0:
             trade_direction = result.direction
             final_result = result
-            fired = True
-            print(f"  SPIKE! Score {result.score:.2f} -> {result.direction}", flush=True)
-            break
+            if config.mode == "only_hedge_plus":
+                if _check_ev_plus(trade_direction, final_result, tokens, event):
+                    fired = True
+                    print(f"  SPIKE! Score {result.score:.2f} -> {result.direction} (EV+)", flush=True)
+                    break
+            else:
+                fired = True
+                print(f"  SPIKE! Score {result.score:.2f} -> {result.direction}", flush=True)
+                break
 
         mode_cfg = MODES.get(config.mode, MODES["safe"])
         if result.confidence >= mode_cfg["min_confidence"]:
             trade_direction = result.direction
             final_result = result
-            fired = True
-            print(f"  Confiança {result.confidence:.1%} -> {result.direction}", flush=True)
-            break
+            if config.mode == "only_hedge_plus":
+                if _check_ev_plus(trade_direction, final_result, tokens, event):
+                    fired = True
+                    print(f"  Confiança {result.confidence:.1%} -> {result.direction} (EV+)", flush=True)
+                    break
+            else:
+                fired = True
+                print(f"  Confiança {result.confidence:.1%} -> {result.direction}", flush=True)
+                break
 
         prev_score = result.score
         time.sleep(TA_POLL_INTERVAL)
@@ -393,8 +428,15 @@ def run_trade_cycle(config: Config) -> bool:
     if not fired and best_result:
         trade_direction = best_result.direction
         final_result = best_result
-        fired = True
-        print(f"  T-5s: melhor sinal -> {trade_direction} (score {best_score:.2f})", flush=True)
+        if config.mode == "only_hedge_plus":
+            if _check_ev_plus(trade_direction, final_result, tokens, event):
+                fired = True
+                print(f"  T-5s: melhor sinal -> {trade_direction} (score {best_score:.2f}) [EV+]", flush=True)
+            else:
+                print(f"  T-5s: sinal sem EV+ (P não > preço+{EV_MIN_MARGIN:.0%}), pulando.", flush=True)
+        else:
+            fired = True
+            print(f"  T-5s: melhor sinal -> {trade_direction} (score {best_score:.2f})", flush=True)
 
     if not fired or not trade_direction:
         print("  Sem sinal válido, pulando janela.", flush=True)
@@ -404,6 +446,8 @@ def run_trade_cycle(config: Config) -> bool:
     mode_cfg = MODES.get(config.mode, MODES["safe"])
     if config.mode == "safe" and config.fixed_bet_safe is not None:
         bet_size = config.fixed_bet_safe
+    elif config.mode == "only_hedge_plus":
+        bet_size = config.fixed_bet_only_hedge if config.fixed_bet_only_hedge is not None else config.min_bet
     elif config.mode == "arbitragem" and config.arbitragem_bet_pct is not None:
         bet_size = config.bankroll * config.arbitragem_bet_pct
     elif config.mode == "aggressive" and config.bankroll > config.original_bankroll:
@@ -419,13 +463,11 @@ def run_trade_cycle(config: Config) -> bool:
         print(f"  Bankroll insuficiente: ${config.bankroll:.2f} < min ${config.min_bet:.2f}")
         return False
 
-    # 5. Buscar mercado e token IDs
-    event = get_market_by_slug(slug)
-    tokens = extract_token_ids(event) if event else None
+    # 5. Mercado/tokens já obtidos antes do loop
 
     if config.dry_run:
         # Dry run: preço real da Polymarket quando disponível, senão modelo
-        from api import get_token_price, get_token_price_from_event, get_window_resolution_polymarket, get_window_resolution_binance
+        from api import get_token_price, get_token_price_from_event, get_window_resolution_polymarket
         # Modo arbitragem: priorizar arb "pura" (ambos os lados já baratos) antes de aposta direcional
         if config.mode == "arbitragem" and tokens and len(tokens) == 2 and event:
             price_up = get_token_price(tokens[0], "BUY") or get_token_price_from_event(event, "up")
@@ -437,8 +479,9 @@ def run_trade_cycle(config: Config) -> bool:
                     payout_arb = shares_arb * 1.0
                     pnl_arb = payout_arb - bet_size
                     pct_arb = (pnl_arb / bet_size) * 100
-                    config.bankroll += pnl_arb
-                    print(f"  DRY RUN ARB PURA: Up @ ${price_up:.2f} + Down @ ${price_down:.2f} = ${total_price:.2f} | {shares_arb:.2f} shares", flush=True)
+                    bet_pct_arb = (bet_size / config.bankroll) * 100 if config.bankroll else 0
+                    config.bankroll += pnl_arb  # bet_pct usa bankroll antes
+                    print(f"  DRY RUN ARB PURA: Up @ ${price_up:.2f} + Down @ ${price_down:.2f} = ${total_price:.2f} | {shares_arb:.2f} shares | aposta: {bet_pct_arb:.1f}% da banca", flush=True)
                     print(f"  ARBITRAGEM: lucro garantido {pct_arb:.1f}% | PnL ${pnl_arb:+.2f} | Bankroll ${config.bankroll:.2f}", flush=True)
                     log_trade(config, slug, "arb", "arb", pnl_arb, bet_size)
                     return True
@@ -476,9 +519,11 @@ def run_trade_cycle(config: Config) -> bool:
                         total_cost = bet_size + cost_second
                         payout = shares * 1.0  # um dos dois paga $1
                         pnl_arb = payout - total_cost
+                        bankroll_antes = config.bankroll
                         config.bankroll += pnl_arb
                         pct_arb = (pnl_arb / total_cost) * 100
-                        print(f"  DRY RUN: {trade_direction.upper()} @ ${token_price:.2f} ({price_source}), {shares:.2f} shares", flush=True)
+                        bet_pct_arb = (total_cost / bankroll_antes) * 100 if bankroll_antes else 0
+                        print(f"  DRY RUN: {trade_direction.upper()} @ ${token_price:.2f} ({price_source}), {shares:.2f} shares | aposta: {bet_pct_arb:.1f}% da banca", flush=True)
                         print(f"  ARBITRAGEM: comprado lado oposto @ ${other_price:.2f} (lucro garantido {pct_arb:.1f}%) | PnL ${pnl_arb:+.2f} | Bankroll ${config.bankroll:.2f}", flush=True)
                         log_trade(config, slug, trade_direction, "arb", pnl_arb, bet_size + cost_second)
                         return True
@@ -486,36 +531,35 @@ def run_trade_cycle(config: Config) -> bool:
         # Sem oportunidade de arbitragem nesta janela → aposta segue normal, aguardar resolução
         print("  Sem oportunidade de arbitragem nesta janela; aposta executada normalmente.", flush=True)
         time.sleep(max(0, close_time - int(time.time()) + 2))
-        print(f"  DRY RUN: {trade_direction.upper()} @ ${token_price:.2f} ({price_source}), {shares:.2f} shares", flush=True)
-        # Resolução: preferir Chainlink (Price to Beat) para bater com Polymarket
-        from api import get_price_to_beat, get_window_resolution_polymarket, get_window_resolution_binance
-        next_window_ts = window_ts + WINDOW_SEC
-        slug_next = f"btc-updown-5m-{next_window_ts}"
+        bet_pct = (bet_size / config.bankroll) * 100 if config.bankroll else 0
+        ev_edge = ""
+        if config.mode == "only_hedge_plus" and final_result is not None:
+            p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
+            edge_pct = (p_win - token_price) * 100
+            ev_edge = f" | EV+ edge: {edge_pct:.1f}%"
+        print(f"  DRY RUN: {trade_direction.upper()} @ ${token_price:.2f} ({price_source}), {shares:.2f} shares | aposta: {bet_pct:.1f}% da banca{ev_edge}", flush=True)
+        # Resolução: APENAS Polymarket (Gamma API) para bater com o site
+        from api import get_window_resolution_polymarket
+        print(f"  Aguardando resolução pela Polymarket (até {RESOLUTION_WAIT_SEC}s)...", flush=True)
         up_wins = None
-        for _ in range(60):  # até 2 min para a Polymarket/Chainlink preencher eventMetadata.priceToBeat
-            open_chainlink = get_price_to_beat(slug)      # abertura da nossa janela (Chainlink)
-            close_chainlink = get_price_to_beat(slug_next) # abertura da próxima = fechamento da nossa (Chainlink)
-            if open_chainlink is not None and close_chainlink is not None:
-                up_wins = close_chainlink >= open_chainlink  # mesma regra Polymarket
-                break
-            if close_chainlink is not None:
-                # só temos fechamento; usar abertura Binance (pode divergir levemente da Chainlink)
-                up_wins = close_chainlink >= window_open
+        for _ in range(RESOLUTION_WAIT_SEC // TA_POLL_INTERVAL):
+            up_wins = get_window_resolution_polymarket(slug)
+            if up_wins is not None:
                 break
             time.sleep(2)
         if up_wins is None:
-            up_wins = get_window_resolution_polymarket(slug)
-        if up_wins is None:
-            up_wins = get_window_resolution_binance(window_ts)
-            if up_wins is not None:
-                print("  (resolução via Binance; Price to Beat ainda não disponível)", flush=True)
-        if up_wins is None:
-            print("  Não foi possível verificar resolução.", flush=True)
+            print("  Não foi possível verificar resolução pela Polymarket.", flush=True)
             return False
         won = (trade_direction == "up" and up_wins) or (trade_direction == "down" and not up_wins)
         pnl = (shares * 1.0 - bet_size) if won else -bet_size
+        pnl_pct = (pnl / bet_size) * 100 if bet_size else 0
         config.bankroll += pnl
-        print(f"  Resultado ({slug}): {'UP' if up_wins else 'DOWN'} -> {'WIN' if won else 'LOSS'} | PnL ${pnl:+.2f} | Bankroll ${config.bankroll:.2f}", flush=True)
+        ev_result = ""
+        if config.mode == "only_hedge_plus" and final_result is not None:
+            p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
+            edge_pct = (p_win - token_price) * 100
+            ev_result = f" | edge na entrada: {edge_pct:.1f}%"
+        print(f"  Resultado ({slug}): {'UP' if up_wins else 'DOWN'} -> {'WIN' if won else 'LOSS'} | PnL ${pnl:+.2f} ({pnl_pct:+.1f}% da aposta){ev_result} | Bankroll ${config.bankroll:.2f}", flush=True)
         log_trade(config, slug, trade_direction, "win" if won else "loss", pnl, bet_size)
         return True
 
@@ -614,8 +658,9 @@ def run_trade_cycle(config: Config) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="Polymarket BTC 5-Min Up/Down Bot")
     parser.add_argument("--dry-run", action="store_true", help="Simular sem ordens reais")
-    parser.add_argument("--mode", choices=["safe", "aggressive", "degen", "arbitragem"], help="Modo de trading")
+    parser.add_argument("--mode", choices=["safe", "aggressive", "degen", "arbitragem", "only_hedge_plus"], help="Modo de trading")
     parser.add_argument("--safe-bet", type=float, metavar="USD", help="Modo safe: valor fixo em USD por entrada (evita pergunta no terminal)")
+    parser.add_argument("--only-hedge-bet", type=float, metavar="USD", help="Modo only_hedge_plus: valor fixo em USD por entrada (só entra com EV+)")
     parser.add_argument("--arbitragem-pct", type=float, metavar="PCT", help="Modo arbitragem: %% da banca por entrada (ex: 25)")
     parser.add_argument("--once", action="store_true", help="Apenas um ciclo")
     parser.add_argument("--max-trades", type=int, help="Máximo de trades (dry-run)")
@@ -627,6 +672,39 @@ def main():
         config.mode = args.mode
     config.once = args.once
     config.max_trades = args.max_trades
+
+    if config.mode == "only_hedge_plus":
+        if args.only_hedge_bet is not None:
+            v = args.only_hedge_bet
+            if v < config.min_bet:
+                print(f"Erro: --only-hedge-bet deve ser >= ${config.min_bet:.2f}", flush=True)
+                sys.exit(1)
+            if v > config.bankroll:
+                print(f"Erro: --only-hedge-bet não pode ser maior que o bankroll (${config.bankroll:.2f})", flush=True)
+                sys.exit(1)
+            config.fixed_bet_only_hedge = v
+        elif sys.stdin.isatty() and sys.stderr.isatty():
+            while True:
+                try:
+                    print(f"Only Hedge+: valor fixo de entrada em USD (ex: 5.00) [min ${config.min_bet:.2f}]: ", end="", flush=True, file=sys.stderr)
+                    s = input().strip()
+                    if not s:
+                        print("  Informe um valor em dólares.", flush=True, file=sys.stderr)
+                        continue
+                    v = float(s.replace(",", "."))
+                    if v < config.min_bet:
+                        print(f"  Valor deve ser >= ${config.min_bet:.2f}", flush=True, file=sys.stderr)
+                        continue
+                    if v > config.bankroll:
+                        print(f"  Valor não pode ser maior que o bankroll (${config.bankroll:.2f})", flush=True, file=sys.stderr)
+                        continue
+                    config.fixed_bet_only_hedge = v
+                    break
+                except ValueError:
+                    print("  Valor inválido. Use número (ex: 5.00)", flush=True, file=sys.stderr)
+        else:
+            print("Only Hedge+ exige valor de entrada. Use --only-hedge-bet 5.0", flush=True, file=sys.stderr)
+            sys.exit(1)
 
     if config.mode == "safe":
         if args.safe_bet is not None:
@@ -693,6 +771,8 @@ def main():
     print(f"Bankroll: ${config.bankroll:.2f} | Min bet: ${config.min_bet:.2f} | Max token: 98c", flush=True)
     if config.mode == "safe" and config.fixed_bet_safe is not None:
         print(f"Entrada fixa (safe): ${config.fixed_bet_safe:.2f}", flush=True)
+    if config.mode == "only_hedge_plus":
+        print(f"Only Hedge+: entrada fixa ${config.fixed_bet_only_hedge or config.min_bet:.2f} | só entra com EV+", flush=True)
     if config.mode == "arbitragem" and config.arbitragem_bet_pct is not None:
         print(f"Arbitragem: {config.arbitragem_bet_pct * 100:.0f}% da banca por entrada | Sem oportunidade = aposta normal", flush=True)
     print("-" * 50, flush=True)
@@ -710,11 +790,17 @@ def main():
             if config.dry_run and config.bankroll < config.min_bet:
                 print("\nBankroll abaixo do mínimo, resetando para coleta de dados...", flush=True)
                 config.bankroll = config.original_bankroll
-            # Esperar exatamente até 1s após o início da próxima janela (não pula nenhuma)
-            # Se acabamos de sair de um ciclo, já estamos na próxima janela; não esperar 288s e pular
-            wait = seconds_until_next_window()
-            if wait > 240:  # >4min até "próxima" = estamos no início da janela que acabou de abrir
-                wait = 0
+            # Não pular janela que estava rolando durante a espera de resolução
+            # Se estamos no período de monitor (últimos 2 min) da janela atual, entrar imediatamente
+            secs = seconds_until_close()
+            if MIN_SECS_TO_ENTER < secs <= MONITOR_START_T:
+                wait = 0  # janela atual ainda tem tempo — entrar agora
+            elif secs > MONITOR_START_T:
+                wait = secs - MONITOR_START_T  # esperar até entrar no período de monitor
+            else:
+                wait = seconds_until_next_window()
+                if wait > 240:
+                    wait = 0
             if wait > 0:
                 print(f"\nPróxima janela em {wait:.0f}s...", flush=True)
                 time.sleep(wait)
