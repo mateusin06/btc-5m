@@ -251,6 +251,15 @@
       </div>
 
       <div class="bg-panel rounded-xl border border-border p-6">
+        <div class="flex justify-between items-center mb-2">
+          <h2 class="text-lg font-semibold text-white">Log do bot</h2>
+          <button type="button" id="btn-refresh-logs" class="text-sm text-accent hover:underline">Atualizar</button>
+        </div>
+        <p class="text-sm text-muted mb-3">Saída em tempo real (ordens, erros, allowance, etc.). Últimas 150 linhas.</p>
+        <pre id="bot-logs" class="bg-[#0f1116] rounded-lg p-4 text-sm text-gray-300 font-mono overflow-auto max-h-64 border border-border">Carregando...</pre>
+      </div>
+
+      <div class="bg-panel rounded-xl border border-border p-6">
         <h2 class="text-lg font-semibold text-white mb-2">Auto-claim</h2>
         <p class="text-sm text-muted mb-4">Claim por API: resgata posições vencedoras na Polymarket usando suas credenciais (sem navegador). Ao ativar, um processo roda a cada 1 minuto. Ou clique em &quot;Resgatar agora&quot; para executar uma vez.</p>
         <div id="autoclaim-status" class="mb-4 flex items-center gap-2">
@@ -405,6 +414,7 @@
         el.classList.toggle('text-gray-400', !isActive);
         el.classList.toggle('text-white', isActive);
       });
+      if (name === 'bot' && typeof refreshBotLogs === 'function') refreshBotLogs();
     }
 
     document.querySelectorAll('.tab').forEach(btn => {
@@ -617,7 +627,27 @@
       } catch (e) {
         getEl('status-text').textContent = 'Erro ao verificar status';
       }
+      refreshBotLogs();
     }
+
+    async function refreshBotLogs() {
+      try {
+        const r = await fetch(API + '/api/bot/logs?tail=150', { headers: authHeaders() });
+        if (r.status === 401) return;
+        const data = await r.json();
+        const pre = getEl('bot-logs');
+        if (data.lines && data.lines.length > 0) {
+          pre.textContent = data.lines.join('\n');
+          pre.scrollTop = pre.scrollHeight;
+        } else {
+          pre.textContent = data.message || 'Nenhum log ainda. Inicie o bot para gerar saída.';
+        }
+      } catch (e) {
+        getEl('bot-logs').textContent = 'Erro ao carregar log: ' + e.message;
+      }
+    }
+
+    getEl('btn-refresh-logs').addEventListener('click', () => refreshBotLogs());
 
     getEl('btn-bot-start').addEventListener('click', async () => {
       const mode = getEl('bot-mode').value;
@@ -654,6 +684,7 @@
           throw new Error(err.detail || r.statusText);
         }
         await refreshBotStatus();
+        refreshBotLogs();
       } catch (e) {
         alert('Erro: ' + e.message);
       }
@@ -663,6 +694,7 @@
       try {
         await fetch(API + '/api/bot/stop', { method: 'POST', headers: authHeaders() });
         await refreshBotStatus();
+        refreshBotLogs();
       } catch (e) {
         alert('Erro: ' + e.message);
       }

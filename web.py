@@ -50,6 +50,7 @@ app.add_middleware(
 
 # Um processo do bot por usuário (user_id -> Popen)
 _bot_processes: dict[str, subprocess.Popen] = {}
+_bot_log_handles: dict[str, list] = {}
 
 # Um processo de auto-claim por usuário (user_id -> Popen)
 _autoclaim_processes: dict[str, subprocess.Popen] = {}
@@ -77,9 +78,15 @@ def _is_serverless() -> bool:
 
 
 def _cleanup_user_bot(user_id: str) -> None:
-    """Remove processo morto do usuário."""
+    """Remove processo morto do usuário e fecha handles de log."""
     proc = _bot_processes.get(user_id)
     if proc is not None and proc.poll() is not None:
+        for f in _bot_log_handles.get(user_id, []):
+            try:
+                f.close()
+            except Exception:
+                pass
+        _bot_log_handles.pop(user_id, None)
         _bot_processes.pop(user_id, None)
 
 
@@ -541,14 +548,36 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         if pct is not None:
             cmd.extend(["--arbitragem-pct", str(int(pct))])
 
-    proc = subprocess.Popen(
-        cmd,
-        cwd=str(PROJECT_ROOT),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env=env,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
-    )
+    log_dir = _writable_log_dir()
+    log_path = log_dir / f"resultados_{safe_id}.txt"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as log_file:
+            log_file.write(f"\n--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode} dry_run={dry_run} markets={req.markets} ---\n")
+        stdout_dest = open(log_path, "a", encoding="utf-8")
+        stderr_dest = open(log_path, "a", encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Não foi possível criar o arquivo de log: {e!s}")
+
+    _bot_log_handles[user_id] = [stdout_dest, stderr_dest]
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(PROJECT_ROOT),
+            stdout=stdout_dest,
+            stderr=stderr_dest,
+            env=env,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        )
+    except Exception as e:
+        for f in [stdout_dest, stderr_dest]:
+            try:
+                f.close()
+            except Exception:
+                pass
+        _bot_log_handles.pop(user_id, None)
+        raise HTTPException(status_code=500, detail=f"Erro ao iniciar o bot: {e!s}")
+
     _bot_processes[user_id] = proc
     return {"ok": True, "pid": proc.pid, "mode": mode, "dry_run": dry_run}
 
@@ -556,7 +585,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
 @app.post("/api/bot/stop")
 def bot_stop(user: dict = Depends(get_current_user)):
     """Para o bot deste usuário se estiver rodando."""
-    global _bot_processes
+    global _bot_processes, _bot_log_handles
     user_id = user["id"]
     proc = _bot_processes.get(user_id)
     if proc is None:
@@ -569,6 +598,12 @@ def bot_stop(user: dict = Depends(get_current_user)):
             proc.kill()
         except Exception:
             pass
+    for f in _bot_log_handles.get(user_id, []):
+        try:
+            f.close()
+        except Exception:
+            pass
+    _bot_log_handles.pop(user_id, None)
     _bot_processes.pop(user_id, None)
     return {"ok": True}
 
@@ -585,6 +620,25 @@ def bot_status(user: dict = Depends(get_current_user)):
         running=True,
         pid=proc.pid,
     )
+
+
+@app.get("/api/bot/logs")
+def bot_logs(user: dict = Depends(get_current_user), tail: int = 100):
+    """Retorna as últimas linhas do log do bot (resultados_<user>.txt)."""
+    if tail < 1 or tail > 500:
+        tail = 100
+    safe_id = _safe_user_id(user["id"])
+    log_dir = _writable_log_dir()
+    log_path = log_dir / f"resultados_{safe_id}.txt"
+    if not log_path.exists():
+        return {"lines": [], "message": "Nenhum log ainda. Inicie o bot para gerar saída."}
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+        lines = all_lines[-tail:] if len(all_lines) > tail else all_lines
+        return {"lines": [ln.rstrip("\n\r") for ln in lines]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/autoclaim/start")
