@@ -652,8 +652,8 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     log_path = log_dir / f"resultados_{safe_id}.txt"
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
-        with open(log_path, "a", encoding="utf-8") as log_file:
-            log_file.write(f"\n--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode} dry_run={dry_run} markets={req.markets} ---\n")
+        with open(log_path, "w", encoding="utf-8") as log_file:
+            log_file.write(f"--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode} dry_run={dry_run} markets={req.markets} ---\n")
         stdout_dest = open(log_path, "a", encoding="utf-8")
         stderr_dest = open(log_path, "a", encoding="utf-8")
     except Exception as e:

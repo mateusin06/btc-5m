@@ -250,14 +250,12 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market
     from strategy import analyze
 
-    print(f"  [{market.upper()}] Iniciando ciclo...", flush=True)
     window_ts = get_window_ts()
     slug = f"{market}-updown-5m-{window_ts}"
     close_time = window_ts + WINDOW_SEC
 
     # Safe, only_hedge_plus, aggressive: não apostar mais de uma vez na mesma janela por mercado
     if config.mode in ("safe", "only_hedge_plus", "aggressive") and _last_bet_window_by_market.get(market) == window_ts:
-        print(f"  [{market.upper()}] Já apostou nesta janela, aguardando próxima.", flush=True)
         return False
 
     monitor_secs = WINDOW_SEC if config.mode == "arbitragem" else MONITOR_START_T
