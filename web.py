@@ -13,7 +13,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, List, Literal, Optional
 
 import requests
 from dotenv import load_dotenv
@@ -242,7 +242,7 @@ class ConfigResponse(BaseModel):
 class BotStartRequest(BaseModel):
     mode: Literal["safe", "aggressive", "dry_run", "arbitragem", "only_hedge_plus"] = Field(..., description="Modo de trading")
     dry_run: bool = Field(False, description="Se True, simula sem ordens reais")
-    markets: Literal["btc", "eth", "both"] = Field("btc", description="Mercado(s): btc, eth ou both")
+    markets: List[Literal["btc", "eth", "btc15m"]] = Field(default=["btc"], description="Mercados: btc, eth, btc15m (lista)")
     safe_bet: Optional[float] = None
     only_hedge_bet: Optional[float] = None
     aggressive_bet_pct: Optional[float] = None
@@ -628,11 +628,11 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     env["AGGRESSIVE_BET_PCT"] = str(int(req.aggressive_bet_pct if req.aggressive_bet_pct is not None else row.get("aggressive_bet_pct", 25)))
     env["MAX_TOKEN_PRICE"] = str(row.get("max_token_price", 0.9))
     env["ARB_MIN_PROFIT_PCT"] = str(row.get("arb_min_profit_pct", 0.04))
-    env["BOT_MARKETS"] = req.markets
+    env["BOT_MARKETS"] = ",".join(req.markets) if isinstance(req.markets, list) else str(req.markets)
     safe_id = _safe_user_id(user["id"])
     env["BOT_USER_ID"] = safe_id
 
-    cmd = [sys.executable, str(PROJECT_ROOT / "bot.py"), "--mode", mode, "--markets", req.markets]
+    cmd = [sys.executable, str(PROJECT_ROOT / "bot.py"), "--mode", mode, "--markets", ",".join(req.markets) if isinstance(req.markets, list) else str(req.markets)]
     if dry_run:
         cmd.append("--dry-run")
     if mode == "safe":
@@ -653,7 +653,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
         with open(log_path, "w", encoding="utf-8") as log_file:
-            log_file.write(f"--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode} dry_run={dry_run} markets={req.markets} ---\n")
+            log_file.write(f"--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode} dry_run={dry_run} markets={','.join(req.markets) if isinstance(req.markets, list) else req.markets} ---\n")
         stdout_dest = open(log_path, "a", encoding="utf-8")
         stderr_dest = open(log_path, "a", encoding="utf-8")
     except Exception as e:

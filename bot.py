@@ -15,13 +15,17 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-# Mercados: btc, eth ou both
+# Mercados: btc, eth, btc15m (combinações via lista)
 def _parse_markets() -> list[str]:
     v = (os.getenv("BOT_MARKETS") or "btc").strip().lower()
+    if "," in v:
+        return [m.strip().lower() for m in v.split(",") if m.strip() in ("btc", "eth", "btc15m")]
     if v == "both":
         return ["btc", "eth"]
     if v == "eth":
         return ["eth"]
+    if v == "btc15m":
+        return ["btc15m"]
     return ["btc"]
 
 load_dotenv()
@@ -32,7 +36,7 @@ MODES = {
     "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.50},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
-    "only_hedge_plus": {"min_confidence": 0.30},
+    "only_hedge_plus": {"min_confidence": 0.50},
 }
 EV_MIN_MARGIN = 0.02
 ARB_MIN_PROFIT_PCT = float(os.getenv("ARB_MIN_PROFIT_PCT", "0.04"))
@@ -42,8 +46,10 @@ ARB_DEADLINE_T = 10
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
 WINDOW_SEC = 300
+WINDOW_SEC_15M = 900
 MONITOR_START_T = 120
-HARD_DEADLINE_T = 15
+MONITOR_START_T_15M = 300
+HARD_DEADLINE_T = 40
 MIN_SECS_TO_ENTER = 40
 TA_POLL_INTERVAL = 2
 SPIKE_THRESHOLD = 1.5
@@ -89,7 +95,13 @@ def delta_to_token_price(delta_pct: float) -> float:
 
 
 def get_window_ts() -> int:
+    """Início da janela 5min atual (Unix, múltiplo de 300)."""
     return int(time.time()) // WINDOW_SEC * WINDOW_SEC
+
+
+def get_window_ts_15m() -> int:
+    """Início da janela 15min atual (Unix, múltiplo de 900)."""
+    return int(time.time()) // WINDOW_SEC_15M * WINDOW_SEC_15M
 
 
 def seconds_until_next_window() -> float:
@@ -99,8 +111,16 @@ def seconds_until_next_window() -> float:
     return (next_start + 1) - now
 
 
-def seconds_until_close() -> int:
-    return (get_window_ts() + WINDOW_SEC) - int(time.time())
+def seconds_until_next_window_15m() -> float:
+    now = time.time()
+    current_start = int(now) // WINDOW_SEC_15M * WINDOW_SEC_15M
+    next_start = current_start + WINDOW_SEC_15M
+    return (next_start + 1) - now
+
+
+def seconds_until_close(window_ts: int, window_sec: int) -> int:
+    """Segundos até o fechamento da janela (window_ts + window_sec - now)."""
+    return (window_ts + window_sec) - int(time.time())
 
 
 def load_config() -> Config:
@@ -188,10 +208,26 @@ def _check_ev_plus(
     )
     if price is None or price <= 0 or price >= 1:
         return False
+
     p_up = getattr(result, "estimated_p_up", 0.5)
-    if direction == "up":
-        return p_up > price + EV_MIN_MARGIN
-    return (1 - p_up) > price + EV_MIN_MARGIN
+    volatility_factor = abs((getattr(result, "window_delta_pct", 0) or 0)) / 100.0
+    dynamic_margin = 0.03 + (volatility_factor * 0.5)
+    dynamic_margin = max(0.03, min(0.08, dynamic_margin))
+
+    direction_upper = direction.upper()
+    if direction_upper == "UP":
+        return p_up > price + dynamic_margin
+    if direction_upper == "DOWN":
+        return (1 - p_up) > price + dynamic_margin
+    return False
+
+
+def _dynamic_ev_margin(result) -> float:
+    """Margem dinâmica 3%–8% para modo only_hedge_plus (baseada em window_delta_pct)."""
+    if result is None:
+        return 0.03
+    v = abs((getattr(result, "window_delta_pct", 0) or 0)) / 100.0
+    return max(0.03, min(0.08, 0.03 + (v * 0.5)))
 
 
 def _sync_balance_allowance(client) -> None:
@@ -245,29 +281,34 @@ def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
 
 
 def run_trade_cycle(config: Config, market: str) -> bool:
-    """Executa um ciclo para um mercado (btc ou eth): espera, analisa, opera."""
+    """Executa um ciclo para um mercado (btc, eth ou btc15m): espera, analisa, opera."""
     global _last_bet_window_by_market
     from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market
     from strategy import analyze
 
-    window_ts = get_window_ts()
-    slug = f"{market}-updown-5m-{window_ts}"
-    close_time = window_ts + WINDOW_SEC
+    is_15m = market == "btc15m"
+    window_sec = WINDOW_SEC_15M if is_15m else WINDOW_SEC
+    window_ts = get_window_ts_15m() if is_15m else get_window_ts()
+    slug = f"btc-updown-15m-{window_ts}" if is_15m else f"{market}-updown-5m-{window_ts}"
+    close_time = window_ts + window_sec
+    monitor_secs = (
+        MONITOR_START_T_15M if is_15m else (WINDOW_SEC if config.mode == "arbitragem" else MONITOR_START_T)
+    )
 
     # Safe, only_hedge_plus, aggressive: não apostar mais de uma vez na mesma janela por mercado
     if config.mode in ("safe", "only_hedge_plus", "aggressive") and _last_bet_window_by_market.get(market) == window_ts:
         return False
 
-    monitor_secs = WINDOW_SEC if config.mode == "arbitragem" else MONITOR_START_T
     while True:
-        secs = seconds_until_close()
+        secs = seconds_until_close(window_ts, window_sec)
         if secs <= monitor_secs:
             break
         if secs % 60 == 0 or secs <= 30:
             print(f"  [{market.upper()}] Janela fecha em {secs}s... (slug: {slug})", flush=True)
         time.sleep(1)
 
-    candles = get_candles_by_market(market, limit=15)
+    candle_limit = 15 if not is_15m else 5
+    candles = get_candles_by_market(market, limit=candle_limit)
     window_open = None
     for c in candles:
         candle_start_sec = c["t"] // 1000
@@ -275,7 +316,10 @@ def run_trade_cycle(config: Config, market: str) -> bool:
             window_open = c["o"]
             break
     if window_open is None:
-        window_open = candles[0]["o"] if candles else get_price_by_market(market) or 0
+        if candles:
+            window_open = candles[-1]["o"] if is_15m else candles[0]["o"]
+        else:
+            window_open = get_price_by_market(market) or 0
 
     if not window_open:
         print(f"  [{market.upper()}] ERRO: Não foi possível obter preço de abertura.", flush=True)
@@ -345,7 +389,8 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                 fired = True
                 print(f"  [{market.upper()}] T-5s: melhor sinal -> {trade_direction} (score {best_score:.2f}) [EV+]", flush=True)
             else:
-                print(f"  [{market.upper()}] T-5s: sinal sem EV+ (P não > preço+{EV_MIN_MARGIN:.0%}), pulando.", flush=True)
+                dm = _dynamic_ev_margin(final_result)
+                print(f"  [{market.upper()}] T-5s: sinal sem EV+ (P não > preço+margem {dm:.0%}), pulando.", flush=True)
         else:
             fired = True
             print(f"  [{market.upper()}] T-5s: melhor sinal -> {trade_direction} (score {best_score:.2f})", flush=True)
@@ -436,8 +481,9 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                     time.sleep(ARB_POLL_INTERVAL)
         if config.mode == "only_hedge_plus" and final_result is not None:
             p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
-            if p_win <= token_price + EV_MIN_MARGIN:
-                print(f"  [{market.upper()}] EV+ não mais válido: P(win)={p_win:.1%} <= preço ${token_price:.2f}+{EV_MIN_MARGIN:.0%}, pulando.", flush=True)
+            dynamic_margin = _dynamic_ev_margin(final_result)
+            if p_win <= token_price + dynamic_margin:
+                print(f"  [{market.upper()}] EV+ não mais válido: P(win)={p_win:.1%} <= preço ${token_price:.2f}+margem {dynamic_margin:.0%}, pulando.", flush=True)
                 return False
         bet_pct = (bet_size / config.bankroll) * 100 if config.bankroll else 0
         ev_edge = ""
@@ -462,8 +508,9 @@ def run_trade_cycle(config: Config, market: str) -> bool:
         return False
     if config.mode == "only_hedge_plus" and final_result is not None and real_price is not None:
         p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
-        if p_win <= real_price + EV_MIN_MARGIN:
-            print(f"  [{market.upper()}] EV+ não mais válido: P(win)={p_win:.1%} <= preço ${real_price:.2f}+{EV_MIN_MARGIN:.0%}, pulando.", flush=True)
+        dynamic_margin = _dynamic_ev_margin(final_result)
+        if p_win <= real_price + dynamic_margin:
+            print(f"  [{market.upper()}] EV+ não mais válido: P(win)={p_win:.1%} <= preço ${real_price:.2f}+margem {dynamic_margin:.0%}, pulando.", flush=True)
             return False
 
     # 6. Executar ordem(s)
@@ -544,12 +591,20 @@ def main():
     parser.add_argument("--arbitragem-pct", type=float, metavar="PCT", help="Modo arbitragem: %% da banca por entrada (ex: 25)")
     parser.add_argument("--once", action="store_true", help="Apenas um ciclo")
     parser.add_argument("--max-trades", type=int, help="Máximo de trades (dry-run)")
-    parser.add_argument("--markets", choices=["btc", "eth", "both"], help="Mercado(s): btc, eth ou both")
+    parser.add_argument("--markets", type=str, metavar="LIST", help="Mercados: btc, eth, btc15m (ex: btc,btc15m ou both para btc+eth)")
     args = parser.parse_args()
 
     config = load_config()
     if args.markets:
-        config.markets = ["btc"] if args.markets == "btc" else (["eth"] if args.markets == "eth" else ["btc", "eth"])
+        raw = args.markets.strip().lower()
+        if raw == "both":
+            config.markets = ["btc", "eth"]
+        elif "," in raw:
+            config.markets = [m.strip() for m in raw.split(",") if m.strip() in ("btc", "eth", "btc15m")]
+        elif raw in ("btc", "eth", "btc15m"):
+            config.markets = [raw]
+        else:
+            config.markets = ["btc"]
     config.dry_run = args.dry_run
     if args.mode:
         config.mode = args.mode
@@ -638,7 +693,7 @@ def main():
     if funder and sig_type == 0:
         print("  AVISO: Funder definido mas signature_type=0. Para Proxy/Safe use tipo 2 na Config.", flush=True)
     markets_str = "+".join(m.upper() for m in config.markets)
-    print(f"Polymarket {markets_str} 5-Min Bot | Modo: {config.mode} | Dry-run: {config.dry_run}", flush=True)
+    print(f"Polymarket {markets_str} Bot | Modo: {config.mode} | Dry-run: {config.dry_run}", flush=True)
     print(f"Min bet: ${config.min_bet:.2f} | Max token: 98c", flush=True)
     if config.mode == "safe" and config.fixed_bet_safe is not None:
         print(f"Entrada fixa (safe): ${config.fixed_bet_safe:.2f}", flush=True)
@@ -665,15 +720,24 @@ def main():
             if config.dry_run and config.bankroll < config.min_bet:
                 print("\nBankroll abaixo do mínimo, resetando...", flush=True)
                 config.bankroll = config.original_bankroll
-            secs = seconds_until_close()
-            if MIN_SECS_TO_ENTER < secs <= MONITOR_START_T:
-                wait = 0
-            elif secs > MONITOR_START_T:
-                wait = secs - MONITOR_START_T
-            else:
-                wait = seconds_until_next_window()
-                if wait > 240:
-                    wait = 0
+            now_ts = int(time.time())
+            wait = None
+            if "btc" in config.markets or "eth" in config.markets:
+                next_5m = ((now_ts // WINDOW_SEC) + 1) * WINDOW_SEC
+                start_monitor_5m = next_5m + WINDOW_SEC - MONITOR_START_T
+                wait_5m = max(0, start_monitor_5m - now_ts)
+                if wait is None or (wait_5m < wait):
+                    wait = wait_5m
+            if "btc15m" in config.markets:
+                next_15m = ((now_ts // WINDOW_SEC_15M) + 1) * WINDOW_SEC_15M
+                start_monitor_15m = next_15m + WINDOW_SEC_15M - MONITOR_START_T_15M
+                wait_15m = max(0, start_monitor_15m - now_ts)
+                if wait is None or (wait_15m < wait):
+                    wait = wait_15m
+            if wait is None:
+                wait = 60
+            if wait > 240:
+                wait = min(wait, 240)
             if wait > 0:
                 print(f"\nPróxima janela em {wait:.0f}s...", flush=True)
                 time.sleep(wait)

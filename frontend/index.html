@@ -210,15 +210,25 @@
           <span class="w-2 h-2 rounded-full bg-gray-500" id="status-dot"></span>
           <span id="status-text">Verificando...</span>
         </div>
-        <div class="grid gap-4 max-w-md">
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">Mercado(s)</label>
-            <select id="bot-markets" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2">
-              <option value="btc">Só BTC</option>
-              <option value="eth">Só ETH</option>
-              <option value="both">BTC e ETH</option>
-            </select>
+        <div class="mb-4">
+          <label class="block text-sm text-gray-400 mb-2">Mercados</label>
+          <div class="flex flex-wrap gap-4">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="market-btc" class="rounded border-border" />
+              <span class="text-sm">BTC 5min</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="market-eth" class="rounded border-border" />
+              <span class="text-sm">ETH 5min</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="market-btc15m" class="rounded border-border" />
+              <span class="text-sm">BTC 15min</span>
+            </label>
           </div>
+          <p class="text-xs text-muted mt-1">Marque um ou mais. O bot opera com a mesma estratégia em cada mercado.</p>
+        </div>
+        <div class="grid gap-4 max-w-md">
           <div>
             <label class="block text-sm text-gray-400 mb-1">Modo</label>
             <select id="bot-mode" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2">
@@ -459,6 +469,9 @@
         if (c.only_hedge_bet != null) getEl('bot-only-hedge-bet').value = c.only_hedge_bet;
         if (c.arbitragem_pct != null) getEl('bot-arbitragem-pct').value = c.arbitragem_pct;
         if (c.aggressive_bet_pct != null) getEl('bot-aggressive-pct').value = c.aggressive_bet_pct;
+        if (!getEl('market-btc').checked && !getEl('market-eth').checked && !getEl('market-btc15m').checked) {
+          getEl('market-btc').checked = true;
+        }
       } catch (e) {
         console.error(e);
       }
@@ -705,10 +718,18 @@
     getEl('btn-bot-start').addEventListener('click', async () => {
       const mode = getEl('bot-mode').value;
       const dryRun = getEl('bot-dry-run').checked;
+      const markets = [];
+      if (getEl('market-btc').checked) markets.push('btc');
+      if (getEl('market-eth').checked) markets.push('eth');
+      if (getEl('market-btc15m').checked) markets.push('btc15m');
+      if (markets.length === 0) {
+        alert('Selecione pelo menos um mercado (BTC 5min, ETH 5min ou BTC 15min).');
+        return;
+      }
       const body = {
         mode: mode === 'dry_run' ? 'dry_run' : mode,
         dry_run: mode === 'dry_run' || dryRun,
-        markets: getEl('bot-markets').value
+        markets: markets
       };
       if (mode === 'safe') {
         const v = parseFloat(getEl('bot-safe-bet').value);

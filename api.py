@@ -69,15 +69,35 @@ def get_eth_candles_1m(limit: int = 30) -> list[dict]:
         return []
 
 
+def get_btc_candles_15m(limit: int = 20) -> list[dict]:
+    """Candles 15min BTC da Binance (para mercado btc 15m)."""
+    try:
+        r = requests.get(
+            BINANCE_KLINE,
+            params={"symbol": "BTCUSDT", "interval": "15m", "limit": limit},
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        return [
+            {"t": k[0], "o": float(k[1]), "h": float(k[2]), "l": float(k[3]), "c": float(k[4]), "v": float(k[5])}
+            for k in data
+        ]
+    except Exception:
+        return []
+
+
 def get_price_by_market(market: str) -> Optional[float]:
-    """Preço atual por mercado (btc ou eth)."""
+    """Preço atual por mercado (btc, eth ou btc15m — btc15m usa preço BTC)."""
     if market == "eth":
         return get_eth_price()
     return get_btc_price()
 
 
 def get_candles_by_market(market: str, limit: int = 30) -> list[dict]:
-    """Candles 1min por mercado (btc ou eth)."""
+    """Candles por mercado: 1min para btc/eth, 15min para btc15m."""
+    if market == "btc15m":
+        return get_btc_candles_15m(limit=min(limit, 20))
     if market == "eth":
         return get_eth_candles_1m(limit=limit)
     return get_btc_candles_1m(limit=limit)
