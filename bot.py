@@ -18,16 +18,21 @@ from dotenv import load_dotenv
 
 # Mercados: btc, eth, btc15m (combinações via lista)
 def _parse_markets() -> list[str]:
-    v = (os.getenv("BOT_MARKETS") or "btc").strip().lower()
+    v = (os.getenv("BOT_MARKETS") or "").strip().lower()
+    if not v:
+        return []
     if "," in v:
-        return [m.strip().lower() for m in v.split(",") if m.strip() in ("btc", "eth", "btc15m")]
+        out = [m.strip().lower() for m in v.split(",") if m.strip() in ("btc", "eth", "btc15m")]
+        return out if out else []
     if v == "both":
         return ["btc", "eth"]
     if v == "eth":
         return ["eth"]
     if v == "btc15m":
         return ["btc15m"]
-    return ["btc"]
+    if v == "btc":
+        return ["btc"]
+    return []
 
 load_dotenv()
 
@@ -57,6 +62,7 @@ SPIKE_THRESHOLD = 1.5
 ORDER_RETRY_INTERVAL = 3
 ORDER_MAX_FOK_RETRIES = 5  # Limite de retentativas FOK para não bloquear outros mercados (ex: ETH)
 MIN_SHARES = 5
+POLY_MIN_ORDER_USD = 1.0  # Polymarket exige mínimo $1 por ordem (marketable BUY)
 LIMIT_FALLBACK_PRICE = 0.95
 MAX_TOKEN_PRICE = float(os.getenv("MAX_TOKEN_PRICE", "0.98"))
 
@@ -247,6 +253,9 @@ def place_fok_order(client, token_id: str, amount_usd: float) -> bool:
     from py_clob_client.clob_types import MarketOrderArgs, OrderType
     from py_clob_client.order_builder.constants import BUY
 
+    if amount_usd < POLY_MIN_ORDER_USD:
+        print(f"  FOK order: valor ${amount_usd:.2f} abaixo do mínimo (${POLY_MIN_ORDER_USD:.2f}), pulando.", flush=True)
+        return False
     mo = MarketOrderArgs(
         token_id=token_id,
         amount=amount_usd,
@@ -267,6 +276,9 @@ def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
     from py_clob_client.clob_types import OrderArgs, OrderType
     from py_clob_client.order_builder.constants import BUY
 
+    if amount_usd < POLY_MIN_ORDER_USD:
+        print(f"  Limit order: valor ${amount_usd:.2f} abaixo do mínimo (${POLY_MIN_ORDER_USD:.2f}), pulando.", flush=True)
+        return False
     limit_price = min(LIMIT_FALLBACK_PRICE, MAX_TOKEN_PRICE)
     shares = amount_usd / limit_price
     if shares < MIN_SHARES:
@@ -285,7 +297,7 @@ def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
 def run_trade_cycle(config: Config, market: str) -> bool:
     """Executa um ciclo para um mercado (btc, eth ou btc15m): espera, analisa, opera."""
     global _last_bet_window_by_market
-    from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market
+    from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market, get_btc_candles_1m
     from strategy import analyze
 
     is_15m = market == "btc15m"
@@ -304,8 +316,8 @@ def run_trade_cycle(config: Config, market: str) -> bool:
 
     slug = f"btc-updown-15m-{window_ts}" if is_15m else f"{market}-updown-5m-{window_ts}"
 
-    # Safe, only_hedge_plus, aggressive: não apostar mais de uma vez na mesma janela por mercado
-    if config.mode in ("safe", "only_hedge_plus", "aggressive") and _last_bet_window_by_market.get(market) == window_ts:
+    # Não apostar mais de uma vez na mesma janela por mercado
+    if _last_bet_window_by_market.get(market) == window_ts:
         return False
 
     while True:
@@ -362,7 +374,8 @@ def run_trade_cycle(config: Config, market: str) -> bool:
         price = get_price_by_market(market)
         if price:
             tick_prices.append(price)
-        candles = get_candles_by_market(market, limit=30)
+        # Para btc15m usar candles 1m na TA para que todos os 7 indicadores da estratégia rodem
+        candles = get_btc_candles_1m(limit=30) if is_15m else get_candles_by_market(market, limit=30)
         if not candles:
             time.sleep(ARB_POLL_INTERVAL if config.mode == "arbitragem" else TA_POLL_INTERVAL)
             continue
@@ -450,6 +463,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
         bet_size = (api_bankroll or config.bankroll) * MODES.get(config.mode, MODES["safe"]).get("bet_pct", 0.25)
 
     bet_size = max(bet_size, config.min_bet)
+    bet_size = max(bet_size, POLY_MIN_ORDER_USD)  # Polymarket exige mínimo $1 por ordem
     cap = api_bankroll if api_bankroll is not None else config.bankroll
     if bet_size > cap:
         bet_size = cap
@@ -474,6 +488,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                     shares_arb = bet_size / total_price
                     bet_pct_arb = (bet_size / config.bankroll) * 100 if config.bankroll else 0
                     print(f"  [{market.upper()}] DRY RUN ARB PURA: Up @ ${price_up:.2f} + Down @ ${price_down:.2f} | {shares_arb:.2f} shares | aposta: {bet_pct_arb:.1f}% da banca", flush=True)
+                    _last_bet_window_by_market[market] = window_ts
                     return True
                 if trade_direction == "arb_pura":
                     print(f"  [{market.upper()}] DRY RUN: arb sumiu (soma agora {total_price:.2f}), pulando.", flush=True)
@@ -527,8 +542,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                 edge_pct = (p_win - token_price) * 100
                 ev_edge = f" | EV+ edge: {edge_pct:.1f}%"
             print(f"  [{market.upper()}] DRY RUN: {trade_direction.upper()} @ ${token_price:.2f}, {shares:.2f} shares | aposta: {bet_pct:.1f}% da banca{ev_edge}", flush=True)
-            if config.mode in ("safe", "only_hedge_plus", "aggressive"):
-                _last_bet_window_by_market[market] = window_ts
+            _last_bet_window_by_market[market] = window_ts
             return True
 
     if not tokens:
@@ -537,7 +551,9 @@ def run_trade_cycle(config: Config, market: str) -> bool:
 
     from api import get_token_price
     token_id = tokens[0] if trade_direction == "up" else tokens[1]
-    real_price = get_token_price(token_id)
+    real_price = get_token_price(token_id, "BUY")
+    # Log de operação real (auditoria)
+    print(f"  [{market.upper()}] REAL | modo={config.mode} janela={window_ts} {trade_direction.upper()} ${bet_size:.2f}", flush=True)
     if real_price is not None and real_price > MAX_TOKEN_PRICE and config.mode != "arbitragem":
         print(f"  [{market.upper()}] Token @ ${real_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
         return False
@@ -566,23 +582,29 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                 and (price_up + price_down) <= (1.0 - ARB_MIN_PROFIT_PCT)):
             amount_up = bet_size * price_up / (price_up + price_down)
             amount_down = bet_size * price_down / (price_up + price_down)
-            ok1 = place_fok_order(client, tokens[0], amount_up) or place_limit_order(client, tokens[0], amount_up)
-            ok2 = place_fok_order(client, tokens[1], amount_down) or place_limit_order(client, tokens[1], amount_down)
-            if ok1 and ok2:
-                print(f"  [{market.upper()}] ARB PURA: Up @ ${price_up:.2f} + Down @ ${price_down:.2f} | executado", flush=True)
-                return True
-            if ok1 and not ok2:
-                ok = True
-                real_price = price_up
-                token_id = tokens[0]
-                arb_first_one_fill = True
-                arb_shares = bet_size / (price_up + price_down)
-                trade_direction = "up"
+            if amount_up >= POLY_MIN_ORDER_USD and amount_down >= POLY_MIN_ORDER_USD:
+                ok1 = place_fok_order(client, tokens[0], amount_up) or place_limit_order(client, tokens[0], amount_up)
+                ok2 = place_fok_order(client, tokens[1], amount_down) or place_limit_order(client, tokens[1], amount_down)
+                if ok1 and ok2:
+                    print(f"  [{market.upper()}] ARB PURA: Up @ ${price_up:.2f} + Down @ ${price_down:.2f} | executado", flush=True)
+                    _last_bet_window_by_market[market] = window_ts
+                    return True
+                if ok1 and not ok2:
+                    ok = True
+                    real_price = price_up
+                    token_id = tokens[0]
+                    arb_first_one_fill = True
+                    arb_shares = bet_size / (price_up + price_down)
+                    trade_direction = "up"
+            else:
+                print(f"  [{market.upper()}] Arb: cada perna precisa >= ${POLY_MIN_ORDER_USD:.2f} (Up ${amount_up:.2f} / Down ${amount_down:.2f}). Aumente a aposta.", flush=True)
+                if trade_direction == "arb_pura":
+                    return False
         elif trade_direction == "arb_pura":
             print(f"  [{market.upper()}] Arb sumiu ao executar (soma > {1.0 - ARB_MIN_PROFIT_PCT:.0%}), pulando.", flush=True)
             return False
 
-    if not ok:
+    if not ok and trade_direction != "arb_pura":
         for _ in range(ORDER_MAX_FOK_RETRIES):
             if int(time.time()) >= close_time:
                 break
@@ -605,17 +627,21 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                     other_price = get_token_price(other_token_id, "BUY")
                     if other_price is not None and other_price <= max_other_price:
                         amount_second = shares_arb * other_price
-                        ok2 = place_fok_order(client, other_token_id, amount_second)
-                        if not ok2:
-                            ok2 = place_limit_order(client, other_token_id, amount_second)
-                        if ok2:
-                            print(f"  [{market.upper()}] ARBITRAGEM: comprado lado oposto @ ${other_price:.2f} | executado", flush=True)
-                            return True
+                        if amount_second >= POLY_MIN_ORDER_USD:
+                            side_second = "Down" if trade_direction == "up" else "Up"
+                            print(f"  [{market.upper()}] REAL | Hedge: {side_second} @ ${other_price:.2f} | ${amount_second:.2f}", flush=True)
+                            ok2 = place_fok_order(client, other_token_id, amount_second)
+                            if not ok2:
+                                ok2 = place_limit_order(client, other_token_id, amount_second)
+                            if ok2:
+                                print(f"  [{market.upper()}] ARBITRAGEM: comprado lado oposto @ ${other_price:.2f} | executado", flush=True)
+                                _last_bet_window_by_market[market] = window_ts
+                                return True
                     time.sleep(ARB_POLL_INTERVAL)
     else:
         print(f"  [{market.upper()}] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)", flush=True)
 
-    if ok and config.mode in ("safe", "only_hedge_plus", "aggressive"):
+    if ok:
         _last_bet_window_by_market[market] = window_ts
     return ok
 
@@ -668,7 +694,10 @@ def main():
         elif raw in ("btc", "eth", "btc15m"):
             config.markets = [raw]
         else:
-            config.markets = ["btc"]
+            config.markets = []
+    if not config.markets:
+        print("Erro: nenhum mercado selecionado. Use --markets btc,eth,btc15m (ou pelo menos um).", flush=True)
+        sys.exit(1)
     config.dry_run = args.dry_run
     if args.mode:
         config.mode = args.mode

@@ -613,6 +613,38 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
             status_code=400,
             detail="Salve suas credenciais Polymarket (chave privada e API) na aba Config antes de iniciar o bot.",
         )
+    markets_list = req.markets if isinstance(req.markets, list) else [s.strip() for s in str(req.markets).split(",") if s.strip()]
+    markets_list = [m for m in markets_list if m in ("btc", "eth", "btc15m")]
+    if not markets_list:
+        raise HTTPException(
+            status_code=400,
+            detail="Selecione pelo menos um mercado (BTC 5min, ETH 5min ou BTC 15min).",
+        )
+
+    # Em operação real, validar parâmetros obrigatórios por modo
+    if not dry_run:
+        min_bet = float(row.get("min_bet", 5))
+        if mode == "safe":
+            safe_bet = req.safe_bet if req.safe_bet is not None else (row.get("safe_bet") and float(row["safe_bet"]))
+            if safe_bet is None or safe_bet < min_bet:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Modo Safe exige valor de aposta (Config ou envio). Mínimo: ${min_bet:.2f}.",
+                )
+        if mode == "only_hedge_plus":
+            oh_bet = req.only_hedge_bet if req.only_hedge_bet is not None else (row.get("only_hedge_bet") and float(row["only_hedge_bet"]))
+            if oh_bet is None or oh_bet < min_bet:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Only Hedge+ exige valor de aposta (Config ou envio). Mínimo: ${min_bet:.2f}.",
+                )
+        if mode == "arbitragem":
+            arb_pct = req.arbitragem_pct if req.arbitragem_pct is not None else (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))
+            if arb_pct is None or arb_pct < 1 or arb_pct > 100:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Modo Arbitragem exige % da banca (1–100) na Config ou no envio.",
+                )
 
     env = os.environ.copy()
     env["POLY_PRIVATE_KEY"] = row.get("private_key", "")
@@ -628,11 +660,11 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     env["AGGRESSIVE_BET_PCT"] = str(int(req.aggressive_bet_pct if req.aggressive_bet_pct is not None else row.get("aggressive_bet_pct", 25)))
     env["MAX_TOKEN_PRICE"] = str(row.get("max_token_price", 0.9))
     env["ARB_MIN_PROFIT_PCT"] = str(row.get("arb_min_profit_pct", 0.04))
-    env["BOT_MARKETS"] = ",".join(req.markets) if isinstance(req.markets, list) else str(req.markets)
+    env["BOT_MARKETS"] = ",".join(markets_list)
     safe_id = _safe_user_id(user["id"])
     env["BOT_USER_ID"] = safe_id
 
-    cmd = [sys.executable, str(PROJECT_ROOT / "bot.py"), "--mode", mode, "--markets", ",".join(req.markets) if isinstance(req.markets, list) else str(req.markets)]
+    cmd = [sys.executable, str(PROJECT_ROOT / "bot.py"), "--mode", mode, "--markets", ",".join(markets_list)]
     if dry_run:
         cmd.append("--dry-run")
     if mode == "safe":
@@ -653,7 +685,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
         with open(log_path, "w", encoding="utf-8") as log_file:
-            log_file.write(f"--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode} dry_run={dry_run} markets={','.join(req.markets) if isinstance(req.markets, list) else req.markets} ---\n")
+            log_file.write(f"--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode} dry_run={dry_run} markets={','.join(markets_list)} ---\n")
         stdout_dest = open(log_path, "a", encoding="utf-8")
         stderr_dest = open(log_path, "a", encoding="utf-8")
     except Exception as e:

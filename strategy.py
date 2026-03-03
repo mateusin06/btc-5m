@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """
-Estratégia de análise técnica para mercados BTC Up/Down 5min.
+Estratégia de análise técnica para mercados Up/Down (5min e 15min).
 
 Produz um score composto de 7 indicadores ponderados.
 Score positivo = Up, negativo = Down.
+
+Uso no bot:
+- direction/confidence/score definem se e para que lado operar (safe, aggressive, only_hedge_plus).
+- estimated_p_up e window_delta_pct são usados em only_hedge_plus para EV+ e margem dinâmica.
+- Para máxima eficácia, analyze() deve receber candles 1m (bot passa 1m para btc/eth e btc15m).
 """
 
 from dataclasses import dataclass
@@ -19,7 +24,8 @@ WEIGHT_VOLUME_SURGE = 1
 WEIGHT_TICK_TREND = 2
 
 
-# Score máximo aproximado para normalização (soma dos pesos)
+# Normalização: confiança e P(Up) usam score em [-MAX_SCORE, +MAX_SCORE]
+# (window_delta sozinho pode contribuir ±7; demais indicadores somam no mesmo eixo)
 MAX_SCORE = 7.0
 
 
@@ -95,13 +101,16 @@ def analyze(
     tick_prices: Optional[list[float]] = None,
 ) -> AnalysisResult:
     """
-    Analisa e retorna score composto.
+    Analisa e retorna score composto usado pelo bot para direção e confiança.
+
+    O bot usa: result.direction, result.confidence (vs min_confidence do modo),
+    result.estimated_p_up e result.window_delta_pct (only_hedge_plus EV+).
 
     Args:
-        window_open_price: Preço de abertura da janela 5min
-        current_price: Preço atual BTC
-        candles_1m: Lista de candles 1min [{"o","h","l","c","v"}, ...]
-        tick_prices: Preços de tick em tempo real (polling 2s)
+        window_open_price: Preço de abertura da janela (5min ou 15min)
+        current_price: Preço atual do ativo (BTC ou ETH)
+        candles_1m: Candles [{"o","h","l","c","v"}]. Preferir 1m para todos os mercados.
+        tick_prices: Preços de tick em tempo real (polling) para tendência intrabar.
     """
     details = {}
     score = 0.0

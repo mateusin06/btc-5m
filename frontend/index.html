@@ -469,9 +469,6 @@
         if (c.only_hedge_bet != null) getEl('bot-only-hedge-bet').value = c.only_hedge_bet;
         if (c.arbitragem_pct != null) getEl('bot-arbitragem-pct').value = c.arbitragem_pct;
         if (c.aggressive_bet_pct != null) getEl('bot-aggressive-pct').value = c.aggressive_bet_pct;
-        if (!getEl('market-btc').checked && !getEl('market-eth').checked && !getEl('market-btc15m').checked) {
-          getEl('market-btc').checked = true;
-        }
       } catch (e) {
         console.error(e);
       }
