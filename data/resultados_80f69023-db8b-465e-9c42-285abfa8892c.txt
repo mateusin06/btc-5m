@@ -1,0 +1,27 @@
+--- Bot iniciado em 2026-03-03T16:44:54.027810+00:00 | modo=only_hedge_plus dry_run=False markets=btc,btc15m ---
+Wallet: signature_type=2 (Proxy/Safe) | funder=0x...227f
+Polymarket BTC+BTC15M Bot | Modo: only_hedge_plus | Dry-run: False
+Min bet: $0.50 | Max token: 98c
+Only Hedge+: entrada fixa $2.00 | só entra com EV+
+Mercados: BTC+BTC15M
+--------------------------------------------------
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC15M] Sem sinal válido, pulando janela.
+
+Próxima janela em 184s...
+  [BTC] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772556300)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772556300)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772556300)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772556300)
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772556300)
+  [BTC15M] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
+  [BTC15M] Sem sinal válido, pulando janela.
+
+Próxima janela em 219s...
+  [BTC] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772557200)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772557200)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772557200)

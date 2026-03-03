@@ -10,6 +10,7 @@ import argparse
 import os
 import sys
 import time
+import threading
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -61,6 +62,7 @@ MAX_TOKEN_PRICE = float(os.getenv("MAX_TOKEN_PRICE", "0.98"))
 
 # Última janela em que apostamos por mercado (safe, only_hedge_plus, aggressive)
 _last_bet_window_by_market: dict[str, int] = {}
+_bankroll_lock = threading.Lock()
 
 
 @dataclass
@@ -582,6 +584,32 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     return ok
 
 
+def _market_loop(
+    config: Config,
+    market: str,
+    shared: dict,
+) -> None:
+    """Roda ciclos para um único mercado em loop (para execução paralela)."""
+    while not shared.get("stop"):
+        try:
+            if run_trade_cycle(config, market):
+                with shared["trades_lock"]:
+                    shared["trades"] += 1
+                    if config.max_trades and shared["trades"] >= config.max_trades:
+                        shared["stop"] = True
+            if config.once:
+                break
+            if config.dry_run:
+                with _bankroll_lock:
+                    if config.bankroll < config.min_bet:
+                        config.bankroll = config.original_bankroll
+        except Exception as e:
+            print(f"  [{market.upper()}] Erro no loop: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+            time.sleep(10)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Polymarket BTC 5-Min Up/Down Bot")
     parser.add_argument("--dry-run", action="store_true", help="Simular sem ordens reais")
@@ -706,49 +734,32 @@ def main():
     print(f"Mercados: {markets_str}", flush=True)
     print("-" * 50, flush=True)
 
-    trades = 0
-    while True:
-        try:
-            for market in config.markets:
-                if run_trade_cycle(config, market):
-                    trades += 1
-            if config.once:
+    shared = {"stop": False, "trades": 0, "trades_lock": threading.Lock()}
+    threads = [
+        threading.Thread(target=_market_loop, args=(config, market, shared), name=f"bot-{market}")
+        for market in config.markets
+    ]
+    for t in threads:
+        t.start()
+    interrupt = False
+    try:
+        while not shared["stop"]:
+            time.sleep(1)
+            if config.max_trades and shared["trades"] >= config.max_trades:
+                shared["stop"] = True
+            if config.once and not any(t.is_alive() for t in threads):
                 break
-            if config.max_trades and trades >= config.max_trades:
-                print(f"\nMax trades ({config.max_trades}) atingido.", flush=True)
-                break
-            if config.dry_run and config.bankroll < config.min_bet:
-                print("\nBankroll abaixo do mínimo, resetando...", flush=True)
-                config.bankroll = config.original_bankroll
-            now_ts = int(time.time())
-            wait = None
-            if "btc" in config.markets or "eth" in config.markets:
-                next_5m = ((now_ts // WINDOW_SEC) + 1) * WINDOW_SEC
-                start_monitor_5m = next_5m + WINDOW_SEC - MONITOR_START_T
-                wait_5m = max(0, start_monitor_5m - now_ts)
-                if wait is None or (wait_5m < wait):
-                    wait = wait_5m
-            if "btc15m" in config.markets:
-                next_15m = ((now_ts // WINDOW_SEC_15M) + 1) * WINDOW_SEC_15M
-                start_monitor_15m = next_15m + WINDOW_SEC_15M - MONITOR_START_T_15M
-                wait_15m = max(0, start_monitor_15m - now_ts)
-                if wait is None or (wait_15m < wait):
-                    wait = wait_15m
-            if wait is None:
-                wait = 60
-            if wait > 240:
-                wait = min(wait, 240)
-            if wait > 0:
-                print(f"\nPróxima janela em {wait:.0f}s...", flush=True)
-                time.sleep(wait)
-        except KeyboardInterrupt:
-            print("\nEncerrado pelo usuário.", flush=True)
-            break
-        except Exception as e:
-            print(f"Erro: {e}", flush=True)
-            import traceback
-            traceback.print_exc()
-            time.sleep(10)
+    except KeyboardInterrupt:
+        interrupt = True
+    shared["stop"] = True
+    if config.max_trades and shared["trades"] >= config.max_trades:
+        print(f"\nMax trades ({config.max_trades}) atingido.", flush=True)
+    elif interrupt:
+        print("\nEncerrado pelo usuário.", flush=True)
+    for t in threads:
+        t.join(timeout=15)
+        if t.is_alive():
+            print(f"  Aviso: thread {t.name} ainda rodando (timeout).", flush=True)
 
 
 if __name__ == "__main__":
