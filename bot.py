@@ -38,7 +38,7 @@ load_dotenv()
 
 # Configurações de modos
 MODES = {
-    "safe": {"min_confidence": 0.50},
+    "safe": {"min_confidence": 0.70},
     "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.50},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
