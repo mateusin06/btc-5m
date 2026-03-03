@@ -39,10 +39,10 @@ load_dotenv()
 # Configurações de modos
 MODES = {
     "safe": {"min_confidence": 0.70},
-    "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.50},
+    "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.55},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
-    "only_hedge_plus": {"min_confidence": 0.50},
+    "only_hedge_plus": {"min_confidence": 0.70},
 }
 EV_MIN_MARGIN = 0.02
 ARB_MIN_PROFIT_PCT = float(os.getenv("ARB_MIN_PROFIT_PCT", "0.04"))
