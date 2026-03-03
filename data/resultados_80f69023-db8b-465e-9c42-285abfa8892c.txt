@@ -1,27 +1,945 @@
---- Bot iniciado em 2026-03-03T16:44:54.027810+00:00 | modo=only_hedge_plus dry_run=False markets=btc,btc15m ---
+--- Bot iniciado em 2026-03-03T17:25:10.428959+00:00 | modo=safe dry_run=False markets=btc,btc15m ---
 Wallet: signature_type=2 (Proxy/Safe) | funder=0x...227f
-Polymarket BTC+BTC15M Bot | Modo: only_hedge_plus | Dry-run: False
+Polymarket BTC+BTC15M Bot | Modo: safe | Dry-run: False
 Min bet: $0.50 | Max token: 98c
-Only Hedge+: entrada fixa $2.00 | só entra com EV+
+Entrada fixa (safe): $2.00
 Mercados: BTC+BTC15M
 --------------------------------------------------
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Ordem executada: UP $2.00
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772558700)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772558700)
+  [BTC] Confiança 50.0% -> down
+  [BTC] Ordem executada: DOWN $2.00
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772559000)
+  [BTC15M] Janela fecha em 900s... (slug: btc-updown-15m-1772559000)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772559000)
+  [BTC15M] Janela fecha em 840s... (slug: btc-updown-15m-1772559000)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772559000)
+  [BTC15M] Janela fecha em 780s... (slug: btc-updown-15m-1772559000)
+  [BTC15M] Janela fecha em 720s... (slug: btc-updown-15m-1772559000)
+  [BTC] Confiança 78.6% -> down
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> down
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> down
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> down
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> down
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> down
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> down
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> down
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> down
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> down
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> down
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> down
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> down
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> down
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> down
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [  [BTC] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
   [BTC] Sem sinal válido, pulando janela.
-  [BTC15M] Sem sinal válido, pulando janela.
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772559000)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772559000)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772559000)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772559000)
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772559000)
+  [BTC15M] Confiança 92.9% -> down (EV+)
+  [BTC15M] Ordem executada: DOWN $2.00
 
-Próxima janela em 184s...
+Próxima janela em 240s...
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772559900)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772559900)
+  [BTC] Confiança 100.0% -> down (EV+)
+  [BTC] Ordem executada: DOWN $2.00
+  [BTC15M] Janela fecha em 660s... (slug: btc-updown-15m-1772559900)
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772559900)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772559900)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772559900)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772559900)
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772559900)
+  [BTC15M] Confiança 100.0% -> up (EV+)
+  [BTC15M] Ordem executada: UP $2.00
+
+Próxima janela em 240s...
+  [BTC] Confiança 64.3% -> down (EV+)
+  [BTC] Ordem executada: DOWN $2.00
+
+Próxima janela em 228s...
+  [BTC] SPIKE! Score -1.50 -> down (EV+)
+  [BTC] EV+ não mais válido: P(win)=58.6% <= preço $0.57+margem 3%, pulando.
+  [BTC15M] Janela fecha em 660s... (slug: btc-updown-15m-1772560800)
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772560800)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772560800)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772560800)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772560800)
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772560800)
+  [BTC15M] Confiança 64.3% -> down (EV+)
+  [BTC15M] Ordem executada: DOWN $2.00
+
+Próxima janela em 240s...
   [BTC] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
   [BTC] Sem sinal válido, pulando janela.
-  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772556300)
-  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772556300)
-  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772556300)
-  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772556300)
-  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772556300)
-  [BTC15M] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
-  [BTC15M] Sem sinal válido, pulando janela.
 
 Próxima janela em 219s...
   [BTC] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
   [BTC] Sem sinal válido, pulando janela.
-  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772557200)
-  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772557200)
-  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772557200)
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772561700)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772561700)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772561700)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772561700)
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772561700)
+  [BTC15M] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
+  [BTC15M] Sem sinal válido, pulando janela.
+
+Próxima janela em 220s...
+  [BTC] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772562600)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772562600)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772562600)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772562600)
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772562600)
+  [BTC15M] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
+  [BTC15M] Sem sinal válido, pulando janela.
+
+Próxima janela em 218s...
+  [BTC] Confiança 50.0% -> down (EV+)
+  [BTC] Ordem executada: DOWN $2.00
+  [BTC15M] Janela fecha em 660s... (slug: btc-updown-15m-1772563500)
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772563500)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772563500)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772563500)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772563500)
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772563500)
+  [BTC15M] Confiança 50.0% -> up (EV+)
+  [BTC15M] Ordem executada: UP $2.00
+
+Próxima janela em 240s...
+  [BTC] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
+  [BTC] Sem sinal válido, pulando janela.
+
+Próxima janela em 219s...
+  [BTC] Confiança 100.0% -> down (EV+)
+  FOK order error: PolyApiException[status_code=400, error_message={'error': "order couldn't be fully filled. FOK orders are fully filled or killed."}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  Limit order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  [BTC] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)
+  [BTC15M] Janela fecha em 660s... (slug: btc-updown-15m-1772564400)
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772564400)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772564400)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772564400)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772564400)
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772564400)
+  [BTC15M] Confiança 100.0% -> down (EV+)
+  [BTC15M] EV+ não mais válido: P(win)=90.0% <= preço $0.87+margem 3%, pulando.
+
+Próxima janela em 240s...
+  [BTC] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC15M] Sem sinal válido, pulando janela.
+
+Próxima janela em 218s...
+  [BTC] Confiança 100.0% -> down (EV+)
+  [BTC] Ordem executada: DOWN $2.00
+  [BTC15M] Janela fecha em 660s... (slug: btc-updown-15m-1772565300)
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772565300)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772565300)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772565300)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772565300)
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772565300)
+  [BTC15M] Confiança 100.0% -> up (EV+)
+  [BTC15M] EV+ não mais válido: P(win)=90.0% <= preço $0.87+margem 3%, pulando.
+
+Próxima janela em 240s...
+  [BTC] T-5s: sinal sem EV+ (P não > preço+margem 3%), pulando.
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC15M] Sem sinal válido, pulando janela.
+
+Próxima janela em 219s...
+own-15m-1772561700)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772561700)
+  [BTC15M] Janela fecha em 840s... (slug: btc-updown-15m-1772561700)
+  [BTC15M] Janela fecha em 780s... (slug: btc-updown-15m-1772561700)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772561700)
+  [BTC15M] Janela fecha em 720s... (slug: btc-updown-15m-1772561700)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] SPIKE! Score 0.50 -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Janela fecha em 660s... (slug: btc-updown-15m-1772561700)
+  [BTC] SPIKE! Score 7.50 -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772561700)
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772562000)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772561700)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772562000)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772561700)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772562000)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772561700)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772561700)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772562300)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772562300)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772562300)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC] Confiança 50.0% -> up
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC] Ordem executada: UP $2.00
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Sem sinal válido, pulando janela.
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772562600)
+  [BTC15M] Janela fecha em 900s... (slug: btc-updown-15m-1772562600)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772562600)
+  [BTC15M] Janela fecha em 840s... (slug: btc-updown-15m-1772562600)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772562600)
+  [BTC15M] Janela fecha em 780s... (slug: btc-updown-15m-1772562600)
+  [BTC15M] Janela fecha em 720s... (slug: btc-updown-15m-1772562600)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Janela fecha em 660s... (slug: btc-updown-15m-1772562600)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 64.3% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 64.3% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772562600)
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772562900)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772562600)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772562900)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772562600)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772562900)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772562600)
+  [BTC] Confiança 78.6% -> up
+  [BTC] Ordem executada: UP $2.00
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772562600)
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772563200)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.96 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.96 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.96 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772563200)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772563200)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC] SPIKE! Score 7.50 -> up
+  [BTC15M] Confiança 100.0% -> up
+  [BTC15M] Token @ $1.00 > 90c, pulando (max $0.95)
+  [BTC15M] Confiança 100.0% -> up
+  FOK order error: PolyApiException[status_code=None, error_message=Request exception!]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': "order couldn't be fully filled. FOK orders are fully filled or killed."}]
+  [BTC] Ordem executada: UP $2.00
+  FOK order error: PolyApiException[status_code=400, error_message={'error': "order couldn't be fully filled. FOK orders are fully filled or killed."}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': "order couldn't be fully filled. FOK orders are fully filled or killed."}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': "order couldn't be fully filled. FOK orders are fully filled or killed."}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': "order couldn't be fully filled. FOK orders are fully filled or killed."}]
+  [BTC15M] Ordem executada: UP $2.00
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772563500)
+  [BTC15M] Janela fecha em 900s... (slug: btc-updown-15m-1772563500)
+  [BTC15M] Janela fecha em 840s... (slug: btc-updown-15m-1772563500)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772563500)
+  [BTC15M] Janela fecha em 780s... (slug: btc-updown-15m-1772563500)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772563500)
+  [BTC15M] Janela fecha em 720s... (slug: btc-updown-15m-1772563500)
+  [BTC] Confiança 50.0% -> down
+  [BTC] Ordem executada: DOWN $2.00
+  [BTC15M] Janela fecha em 660s... (slug: btc-updown-15m-1772563500)
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772563800)
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772563500)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772563800)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772563500)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772563800)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772563500)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772563500)
+  [BTC] SPIKE! Score -4.50 -> down
+  [BTC] Ordem executada: DOWN $2.00
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772563500)
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772564100)
+  [BTC15M] Confiança 78.6% -> up
+  [BTC15M] Ordem executada: UP $2.00
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772564100)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772564100)
+  [BTC] Confiança 100.0% -> down
+  [BTC] Ordem executada: DOWN $2.00
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772564400)
+  [BTC15M] Janela fecha em 900s... (slug: btc-updown-15m-1772564400)
+  [BTC15M] Janela fecha em 840s... (slug: btc-updown-15m-1772564400)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772564400)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772564400)
+  [BTC15M] Janela fecha em 780s... (slug: btc-updown-15m-1772564400)
+  [BTC15M] Janela fecha em 720s... (slug: btc-updown-15m-1772564400)
+  [BTC] Confiança 100.0% -> down
+  [BTC] Ordem executada: DOWN $2.00
+  [BTC15M] Janela fecha em 660s... (slug: btc-updown-15m-1772564400)
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772564700)
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772564400)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772564700)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772564400)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772564700)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772564400)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772564400)
+  [BTC] Confiança 100.0% -> down
+  [BTC] Ordem executada: DOWN $2.00
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772565000)
+  [BTC15M] Confiança 100.0% -> down
+  [BTC15M] Ordem executada: DOWN $2.00
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772565000)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772565000)
+  [BTC] SPIKE! Score 9.50 -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 78.6% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC15M] Janela fecha em 900s... (slug: btc-updown-15m-1772565300)
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772565300)
+  [BTC15M] Janela fecha em 840s... (slug: btc-updown-15m-1772565300)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772565300)
+  [BTC15M] Janela fecha em 780s... (slug: btc-updown-15m-1772565300)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772565300)
+  [BTC15M] Janela fecha em 720s... (slug: btc-updown-15m-1772565300)
+  [BTC] Confiança 100.0% -> down
+  [BTC] Ordem executada: DOWN $2.00
+  [BTC15M] Janela fecha em 660s... (slug: btc-updown-15m-1772565300)
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772565600)
+  [BTC15M] Janela fecha em 600s... (slug: btc-updown-15m-1772565300)
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772565600)
+  [BTC15M] Janela fecha em 540s... (slug: btc-updown-15m-1772565300)
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772565600)
+  [BTC15M] Janela fecha em 480s... (slug: btc-updown-15m-1772565300)
+  [BTC15M] Janela fecha em 420s... (slug: btc-updown-15m-1772565300)
+  [BTC] Confiança 92.9% -> up
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  Limit order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  [BTC] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC] Token @ $0.97 > 90c, pulando (max $0.95)
+  [BTC] Confiança 92.9% -> up
+  [BTC15M] Janela fecha em 360s... (slug: btc-updown-15m-1772565300)
+  [BTC] Token @ $0.98 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Confiança 100.0% -> up
+  [BTC] Token @ $0.99 > 90c, pulando (max $0.95)
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC] Sem sinal válido, pulando janela.
+  [BTC] Janela fecha em 300s... (slug: btc-updown-5m-1772565900)
+  [BTC15M] Confiança 100.0% -> up
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  Limit order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  [BTC15M] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)
+  [BTC15M] Confiança 100.0% -> up
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  Limit order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  [BTC15M] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)
+  [BTC15M] Confiança 100.0% -> up
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  [BTC] Janela fecha em 240s... (slug: btc-updown-5m-1772565900)
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  Limit order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  [BTC15M] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)
+  [BTC15M] Confiança 100.0% -> up
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  Limit order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  [BTC15M] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)
+  [BTC15M] Confiança 100.0% -> up
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  Limit order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  [BTC15M] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)
+  [BTC15M] Confiança 100.0% -> up
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  [BTC] Janela fecha em 180s... (slug: btc-updown-5m-1772565900)
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  Limit order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  [BTC15M] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)
+  [BTC15M] Confiança 100.0% -> up
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  Limit order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  [BTC15M] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)
+  [BTC15M] Confiança 92.9% -> up
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  Limit order error: PolyApiException[status_code=400, error_message={'error': 'not enough balance / allowance'}]
+  [BTC15M] Falha ao executar ordem. (Verifique: allowance, saldo USDC, conexão.)
+  [BTC] Confiança 92.9% -> down
+  [BTC15M] Confiança 50.0% -> down
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]
+  FOK order error: PolyApiException[status_code=400, error_message={'error': 'invalid amount for a marketable BUY order ($0.59), min size: $1'}]

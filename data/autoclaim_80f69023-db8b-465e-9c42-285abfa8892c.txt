@@ -881,7 +881,391 @@ Nenhuma posição para resgatar.
 Nenhuma posição para resgatar.
 
 --- Auto-claim (claim por API) iniciado em 2026-03-03T16:45:04.440810+00:00 ---
-Claim por API iniciado (intervalo 60 s).
+Erro ao resgatar posi��o
+Traceback (most recent call last):
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\claim_api.py", line 159, in run_claim
+    result = web3.redeem_position(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\polymarket_apis\clients\web3_client.py", line 383, in redeem_position
+    return self._execute(to, data, "Redeem Position", metadata="redeem")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\polymarket_apis\clients\web3_client.py", line 449, in _execute
+    return self._execute_transaction(txn_data, operation_name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\polymarket_apis\clients\web3_client.py", line 554, in _execute_transaction
+    tx_hash = self.w3.eth.send_raw_transaction(signed_txn.raw_transaction)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\eth\eth.py", line 397, in send_raw_transaction
+    return self._send_raw_transaction(transaction)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\module.py", line 112, in caller
+    result = w3.manager.request_blocking(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\manager.py", line 233, in request_blocking
+    return self.formatted_response(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\manager.py", line 199, in formatted_response
+    validate_rpc_response_and_raise_if_error(
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\_utils\validation.py", line 401, in validate_rpc_response_and_raise_if_error
+    raise web3_rpc_error
+web3.exceptions.Web3RPCError: {'message': 'replacement transaction underpriced', 'code': -32000}
+Erro ao resgatar posi��o
+Traceback (most recent call last):
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\claim_api.py", line 159, in run_claim
+    result = web3.redeem_position(
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\polymarket_apis\clients\web3_client.py", line 383, in redeem_position
+    return self._execute(to, data, "Redeem Position", metadata="redeem")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\polymarket_apis\clients\web3_client.py", line 449, in _execute
+    return self._execute_transaction(txn_data, operation_name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\polymarket_apis\clients\web3_client.py", line 554, in _execute_transaction
+    tx_hash = self.w3.eth.send_raw_transaction(signed_txn.raw_transaction)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\eth\eth.py", line 397, in send_raw_transaction
+    return self._send_raw_transaction(transaction)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\module.py", line 112, in caller
+    result = w3.manager.request_blocking(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\manager.py", line 233, in request_blocking
+    return self.formatted_response(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\manager.py", line 199, in formatted_response
+    validate_rpc_response_and_raise_if_error(
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\_utils\validation.py", line 401, in validate_rpc_response_and_raise_if_error
+    raise web3_rpc_error
+web3.exceptions.Web3RPCError: {'message': 'nonce too low: next nonce 47, tx nonce 46', 'code': -32000}
+olymarket_apis\clients\web3_client.py", line 383, in redeem_position
+    return self._execute(to, data, "Redeem Position", metadata="redeem")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\polymarket_apis\clients\web3_client.py", line 449, in _execute
+    return self._execute_transaction(txn_data, operation_name)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\polymarket_apis\clients\web3_client.py", line 554, in _execute_transaction
+    tx_hash = self.w3.eth.send_raw_transaction(signed_txn.raw_transaction)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\eth\eth.py", line 397, in send_raw_transaction
+    return self._send_raw_transaction(transaction)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\module.py", line 112, in caller
+    result = w3.manager.request_blocking(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\manager.py", line 233, in request_blocking
+    return self.formatted_response(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\manager.py", line 199, in formatted_response
+    validate_rpc_response_and_raise_if_error(
+  File "C:\Users\PICHAU\Documents\BOT_Polymarket\venv\Lib\site-packages\web3\_utils\validation.py", line 401, in validate_rpc_response_and_raise_if_error
+    raise web3_rpc_error
+web3.exceptions.Web3RPCError: {'message': 'replacement transaction underpriced', 'code': -32000}
+Resgatadas: 0, falhas: 2. Valor total (aprox.): $6.91
+  Posição 1: {'message': 'already known', 'code': -32000}
+  Posição 2: {'message': 'replacement transaction underpriced', 'code': -32000}
+Resgatadas: 2, falhas: 0. Valor total (aprox.): $6.91
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0.
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0.
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $4.91
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $0.77
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $3.23
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $5.65
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $5.65
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0.
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Resgatadas: 1, falhas: 0.
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $3.23
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $3.23
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0.
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0.
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Resgatadas: 1, falhas: 0.
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $2.58
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 0, falhas: 2. Valor total (aprox.): $5.02
+  Posição 1: {'message': 'replacement transaction underpriced', 'code': -32000}
+  Posição 2: {'message': 'nonce too low: next nonce 47, tx nonce 46', 'code': -32000}
+Resgatadas: 2, falhas: 0. Valor total (aprox.): $5.02
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0.
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Resgatadas: 1, falhas: 0.
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $2.13
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $2.07
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $0.03
+Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
 Nenhuma posição para resgatar.
 Nenhuma posição para resgatar.
 Nenhuma posição para resgatar.

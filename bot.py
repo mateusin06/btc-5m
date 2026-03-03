@@ -291,11 +291,18 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     is_15m = market == "btc15m"
     window_sec = WINDOW_SEC_15M if is_15m else WINDOW_SEC
     window_ts = get_window_ts_15m() if is_15m else get_window_ts()
-    slug = f"btc-updown-15m-{window_ts}" if is_15m else f"{market}-updown-5m-{window_ts}"
     close_time = window_ts + window_sec
     monitor_secs = (
         MONITOR_START_T_15M if is_15m else (WINDOW_SEC if config.mode == "arbitragem" else MONITOR_START_T)
     )
+
+    # Se já passou do prazo para operar nesta janela (ex.: thread reentrou logo após ciclo), usar próxima janela
+    secs_left = seconds_until_close(window_ts, window_sec)
+    if secs_left < HARD_DEADLINE_T:
+        window_ts = window_ts + window_sec
+        close_time = window_ts + window_sec
+
+    slug = f"btc-updown-15m-{window_ts}" if is_15m else f"{market}-updown-5m-{window_ts}"
 
     # Safe, only_hedge_plus, aggressive: não apostar mais de uma vez na mesma janela por mercado
     if config.mode in ("safe", "only_hedge_plus", "aggressive") and _last_bet_window_by_market.get(market) == window_ts:
@@ -339,12 +346,25 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     final_result = None
 
     while int(time.time()) < close_time - HARD_DEADLINE_T:
+        # Modo arbitragem: prioridade para arb pura a cada iteração (Up+Down < 1-margem)
+        if config.mode == "arbitragem" and tokens and len(tokens) == 2 and event:
+            from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
+            price_up = _get_tok(tokens[0], "BUY") or _get_ev(event, "up")
+            price_down = _get_tok(tokens[1], "BUY") or _get_ev(event, "down")
+            if (price_up is not None and price_down is not None
+                    and 0 < price_up < 1 and 0 < price_down < 1
+                    and (price_up + price_down) <= (1.0 - ARB_MIN_PROFIT_PCT)):
+                fired = True
+                trade_direction = "arb_pura"
+                print(f"  [{market.upper()}] ARB PURA detectada: Up @ {price_up:.2f} + Down @ {price_down:.2f} = {price_up+price_down:.2f} (lucro garantido)", flush=True)
+                break
+
         price = get_price_by_market(market)
         if price:
             tick_prices.append(price)
         candles = get_candles_by_market(market, limit=30)
         if not candles:
-            time.sleep(TA_POLL_INTERVAL)
+            time.sleep(ARB_POLL_INTERVAL if config.mode == "arbitragem" else TA_POLL_INTERVAL)
             continue
 
         result = analyze(window_open, price or candles[-1]["c"], candles, tick_prices[-20:] if tick_prices else None)
@@ -361,6 +381,8 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                     fired = True
                     print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} (EV+)", flush=True)
                     break
+                else:
+                    print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} (sem EV+, continuando)", flush=True)
             else:
                 fired = True
                 print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction}", flush=True)
@@ -375,13 +397,16 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                     fired = True
                     print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction} (EV+)", flush=True)
                     break
+                else:
+                    print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction} (sem EV+, continuando)", flush=True)
             else:
                 fired = True
                 print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction}", flush=True)
                 break
 
         prev_score = result.score
-        time.sleep(TA_POLL_INTERVAL)
+        poll = ARB_POLL_INTERVAL if config.mode == "arbitragem" else TA_POLL_INTERVAL
+        time.sleep(poll)
 
     if not fired and best_result:
         trade_direction = best_result.direction
@@ -440,63 +465,71 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     # 5. Dry run
     if config.dry_run:
         from api import get_token_price, get_token_price_from_event
-        if config.mode == "arbitragem" and tokens and len(tokens) == 2 and event:
+        if config.mode == "arbitragem" and (trade_direction == "arb_pura" or (tokens and len(tokens) == 2 and event)):
             price_up = get_token_price(tokens[0], "BUY") or get_token_price_from_event(event, "up")
             price_down = get_token_price(tokens[1], "BUY") or get_token_price_from_event(event, "down")
-            if price_up is not None and price_down is not None and price_up <= MAX_TOKEN_PRICE and price_down <= MAX_TOKEN_PRICE:
+            if price_up is not None and price_down is not None and 0 < price_up < 1 and 0 < price_down < 1:
                 total_price = price_up + price_down
                 if total_price <= (1.0 - ARB_MIN_PROFIT_PCT):
                     shares_arb = bet_size / total_price
                     bet_pct_arb = (bet_size / config.bankroll) * 100 if config.bankroll else 0
                     print(f"  [{market.upper()}] DRY RUN ARB PURA: Up @ ${price_up:.2f} + Down @ ${price_down:.2f} | {shares_arb:.2f} shares | aposta: {bet_pct_arb:.1f}% da banca", flush=True)
                     return True
-        token_id_dry = tokens[0] if trade_direction == "up" else tokens[1] if tokens else None
-        token_price = None
-        if token_id_dry:
-            token_price = get_token_price(token_id_dry, "BUY")
-            if token_price is None and int(time.time()) < close_time:
-                for _ in range(5):
-                    time.sleep(2)
-                    token_price = get_token_price(token_id_dry, "BUY")
-                    if token_price is not None:
-                        break
-        if token_price is None and event:
-            token_price = get_token_price_from_event(event, trade_direction)
-        if token_price is None:
-            token_price = delta_to_token_price(final_result.window_delta_pct if final_result else 0)
-        if token_price > MAX_TOKEN_PRICE:
-            print(f"  [{market.upper()}] Token @ ${token_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
-            return False
-        shares = bet_size / token_price
-        if config.mode == "arbitragem" and tokens and len(tokens) == 2:
-            token_other_id = tokens[1] if trade_direction == "up" else tokens[0]
-            max_other_price = (1.0 - ARB_MIN_PROFIT_PCT) - token_price
-            if max_other_price > 0:
-                while int(time.time()) < close_time - ARB_DEADLINE_T:
-                    other_price = get_token_price(token_other_id, "BUY")
-                    if other_price is not None and other_price <= max_other_price:
-                        cost_second = shares * other_price
-                        total_cost = bet_size + cost_second
-                        bet_pct_arb = (total_cost / config.bankroll) * 100 if config.bankroll else 0
-                        print(f"  [{market.upper()}] DRY RUN: {trade_direction.upper()} @ ${token_price:.2f} + hedge @ ${other_price:.2f} | aposta: {bet_pct_arb:.1f}% da banca", flush=True)
-                        return True
-                    time.sleep(ARB_POLL_INTERVAL)
-        if config.mode == "only_hedge_plus" and final_result is not None:
-            p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
-            dynamic_margin = _dynamic_ev_margin(final_result)
-            if p_win <= token_price + dynamic_margin:
-                print(f"  [{market.upper()}] EV+ não mais válido: P(win)={p_win:.1%} <= preço ${token_price:.2f}+margem {dynamic_margin:.0%}, pulando.", flush=True)
+                if trade_direction == "arb_pura":
+                    print(f"  [{market.upper()}] DRY RUN: arb sumiu (soma agora {total_price:.2f}), pulando.", flush=True)
+                    return False
+            if trade_direction == "arb_pura":
+                print(f"  [{market.upper()}] DRY RUN: arb sumiu (preços indisponíveis), pulando.", flush=True)
                 return False
-        bet_pct = (bet_size / config.bankroll) * 100 if config.bankroll else 0
-        ev_edge = ""
-        if config.mode == "only_hedge_plus" and final_result is not None:
-            p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
-            edge_pct = (p_win - token_price) * 100
-            ev_edge = f" | EV+ edge: {edge_pct:.1f}%"
-        print(f"  [{market.upper()}] DRY RUN: {trade_direction.upper()} @ ${token_price:.2f}, {shares:.2f} shares | aposta: {bet_pct:.1f}% da banca{ev_edge}", flush=True)
-        if config.mode in ("safe", "only_hedge_plus", "aggressive"):
-            _last_bet_window_by_market[market] = window_ts
-        return True
+        if trade_direction in ("up", "down"):
+            token_id_dry = tokens[0] if trade_direction == "up" else tokens[1] if tokens else None
+            token_price = None
+            if token_id_dry:
+                token_price = get_token_price(token_id_dry, "BUY")
+                if token_price is None and int(time.time()) < close_time:
+                    for _ in range(5):
+                        time.sleep(2)
+                        token_price = get_token_price(token_id_dry, "BUY")
+                        if token_price is not None:
+                            break
+            if token_price is None and event:
+                token_price = get_token_price_from_event(event, trade_direction)
+            if token_price is None:
+                token_price = delta_to_token_price(final_result.window_delta_pct if final_result else 0)
+            if token_price > MAX_TOKEN_PRICE:
+                if config.mode != "arbitragem":
+                    print(f"  [{market.upper()}] Token @ ${token_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
+                    return False
+            shares = bet_size / token_price
+            if config.mode == "arbitragem" and tokens and len(tokens) == 2:
+                token_other_id = tokens[1] if trade_direction == "up" else tokens[0]
+                max_other_price = (1.0 - ARB_MIN_PROFIT_PCT) - token_price
+                if max_other_price > 0:
+                    while int(time.time()) < close_time - ARB_DEADLINE_T:
+                        other_price = get_token_price(token_other_id, "BUY")
+                        if other_price is not None and other_price <= max_other_price:
+                            cost_second = shares * other_price
+                            total_cost = bet_size + cost_second
+                            bet_pct_arb = (total_cost / config.bankroll) * 100 if config.bankroll else 0
+                            print(f"  [{market.upper()}] DRY RUN: {trade_direction.upper()} @ ${token_price:.2f} + hedge @ ${other_price:.2f} | aposta: {bet_pct_arb:.1f}% da banca", flush=True)
+                            return True
+                        time.sleep(ARB_POLL_INTERVAL)
+            if config.mode == "only_hedge_plus" and final_result is not None:
+                p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
+                dynamic_margin = _dynamic_ev_margin(final_result)
+                if p_win <= token_price + dynamic_margin:
+                    print(f"  [{market.upper()}] EV+ não mais válido: P(win)={p_win:.1%} <= preço ${token_price:.2f}+margem {dynamic_margin:.0%}, pulando.", flush=True)
+                    return False
+            bet_pct = (bet_size / config.bankroll) * 100 if config.bankroll else 0
+            ev_edge = ""
+            if config.mode == "only_hedge_plus" and final_result is not None:
+                p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
+                edge_pct = (p_win - token_price) * 100
+                ev_edge = f" | EV+ edge: {edge_pct:.1f}%"
+            print(f"  [{market.upper()}] DRY RUN: {trade_direction.upper()} @ ${token_price:.2f}, {shares:.2f} shares | aposta: {bet_pct:.1f}% da banca{ev_edge}", flush=True)
+            if config.mode in ("safe", "only_hedge_plus", "aggressive"):
+                _last_bet_window_by_market[market] = window_ts
+            return True
 
     if not tokens:
         print(f"  [{market.upper()}] Mercado não encontrado na Polymarket.", flush=True)
@@ -505,7 +538,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     from api import get_token_price
     token_id = tokens[0] if trade_direction == "up" else tokens[1]
     real_price = get_token_price(token_id)
-    if real_price is not None and real_price > MAX_TOKEN_PRICE:
+    if real_price is not None and real_price > MAX_TOKEN_PRICE and config.mode != "arbitragem":
         print(f"  [{market.upper()}] Token @ ${real_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
         return False
     if config.mode == "only_hedge_plus" and final_result is not None and real_price is not None:
@@ -529,7 +562,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
         price_up = get_token_price(tokens[0], "BUY")
         price_down = get_token_price(tokens[1], "BUY")
         if (price_up is not None and price_down is not None
-                and price_up <= MAX_TOKEN_PRICE and price_down <= MAX_TOKEN_PRICE
+                and 0 < price_up < 1 and 0 < price_down < 1
                 and (price_up + price_down) <= (1.0 - ARB_MIN_PROFIT_PCT)):
             amount_up = bet_size * price_up / (price_up + price_down)
             amount_down = bet_size * price_down / (price_up + price_down)
@@ -545,6 +578,9 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                 arb_first_one_fill = True
                 arb_shares = bet_size / (price_up + price_down)
                 trade_direction = "up"
+        elif trade_direction == "arb_pura":
+            print(f"  [{market.upper()}] Arb sumiu ao executar (soma > {1.0 - ARB_MIN_PROFIT_PCT:.0%}), pulando.", flush=True)
+            return False
 
     if not ok:
         for _ in range(ORDER_MAX_FOK_RETRIES):
