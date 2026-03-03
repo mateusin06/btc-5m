@@ -26,7 +26,10 @@ WEIGHT_TICK_TREND = 2
 
 # Normalização: confiança e P(Up) usam score em [-MAX_SCORE, +MAX_SCORE]
 # (window_delta sozinho pode contribuir ±7; demais indicadores somam no mesmo eixo)
-MAX_SCORE = 7.0
+MAX_SCORE = (
+    WEIGHT_WINDOW_DELTA + WEIGHT_MICRO_MOMENTUM + WEIGHT_ACCELERATION
+    + WEIGHT_EMA_CROSS + WEIGHT_RSI + WEIGHT_VOLUME_SURGE + WEIGHT_TICK_TREND
+)
 
 
 @dataclass

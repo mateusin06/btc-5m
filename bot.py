@@ -58,7 +58,9 @@ MONITOR_START_T_15M = 300
 HARD_DEADLINE_T = 40
 MIN_SECS_TO_ENTER = 40
 TA_POLL_INTERVAL = 2
-SPIKE_THRESHOLD = 1.5
+SPIKE_THRESHOLD = 2.0  # Salto mínimo de score para disparar por spike (mais assertivo que 1.5)
+SPIKE_MIN_CONFIDENCE = 0.40  # Spike só dispara se confiança >= 40% (evita ruído)
+T5S_MIN_CONFIDENCE = 0.35  # T-5s só dispara se melhor sinal tiver confiança >= 35%
 ORDER_RETRY_INTERVAL = 3
 ORDER_MAX_FOK_RETRIES = 5  # Limite de retentativas FOK para não bloquear outros mercados (ex: ETH)
 MIN_SHARES = 5
@@ -387,19 +389,23 @@ def run_trade_cycle(config: Config, market: str) -> bool:
             best_result = result
 
         if abs(result.score - prev_score) >= SPIKE_THRESHOLD and prev_score != 0:
-            trade_direction = result.direction
-            final_result = result
-            if config.mode == "only_hedge_plus":
-                if _check_ev_plus(trade_direction, final_result, tokens, event):
-                    fired = True
-                    print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} (EV+)", flush=True)
-                    break
+            # Spike mais assertivo: só dispara se confiança mínima (evita ruído)
+            if result.confidence >= SPIKE_MIN_CONFIDENCE:
+                trade_direction = result.direction
+                final_result = result
+                if config.mode == "only_hedge_plus":
+                    if _check_ev_plus(trade_direction, final_result, tokens, event):
+                        fired = True
+                        print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} (EV+)", flush=True)
+                        break
+                    else:
+                        print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} (sem EV+, continuando)", flush=True)
                 else:
-                    print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} (sem EV+, continuando)", flush=True)
+                    fired = True
+                    print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction}", flush=True)
+                    break
             else:
-                fired = True
-                print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction}", flush=True)
-                break
+                print(f"  [{market.upper()}] SPIKE ignorado (confiança {result.confidence:.1%} < {SPIKE_MIN_CONFIDENCE:.0%})", flush=True)
 
         mode_cfg = MODES.get(config.mode, MODES["safe"])
         if result.confidence >= mode_cfg["min_confidence"]:
@@ -424,7 +430,10 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     if not fired and best_result:
         trade_direction = best_result.direction
         final_result = best_result
-        if config.mode == "only_hedge_plus":
+        # T-5s mais assertivo: só entra se o melhor sinal tiver confiança mínima
+        if best_result.confidence < T5S_MIN_CONFIDENCE:
+            print(f"  [{market.upper()}] T-5s: melhor sinal com confiança {best_result.confidence:.1%} < {T5S_MIN_CONFIDENCE:.0%}, pulando.", flush=True)
+        elif config.mode == "only_hedge_plus":
             if _check_ev_plus(trade_direction, final_result, tokens, event):
                 fired = True
                 print(f"  [{market.upper()}] T-5s: melhor sinal -> {trade_direction} (score {best_score:.2f}) [EV+]", flush=True)
@@ -789,6 +798,7 @@ def main():
     markets_str = "+".join(m.upper() for m in config.markets)
     print(f"Polymarket {markets_str} Bot | Modo: {config.mode} | Dry-run: {config.dry_run}", flush=True)
     print(f"Min bet: ${config.min_bet:.2f} | Max token: 98c", flush=True)
+    print(f"Estratégias assertivas: Spike salto>={SPIKE_THRESHOLD} + conf>={SPIKE_MIN_CONFIDENCE:.0%} | Confiança por modo | T-5s conf>={T5S_MIN_CONFIDENCE:.0%}", flush=True)
     if config.mode == "safe" and config.fixed_bet_safe is not None:
         print(f"Entrada fixa (safe): ${config.fixed_bet_safe:.2f}", flush=True)
     if config.mode == "only_hedge_plus":

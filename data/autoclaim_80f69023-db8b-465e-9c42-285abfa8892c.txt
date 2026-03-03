@@ -918,16 +918,24 @@ Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
+NClaim por API iniciado (intervalo 60 s).
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
-Txn hash: 0x1863c62769ce74969322a43a61fa1114b3361832f85fc139a781a735bca4ddd0
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Txn hash: 0xd30e450405d99c99cc07e4dc1aea870547d353f0a7c03c48bf10fd2c2a5d681c
 Redeem Position succeeded
 Paid 0.013 POL for gas
-Txn hash: 0x1d8cc5380b9889014df1cfc82b1eee996fb596db4b017b6ba468a316a00ef35c
-Redeem Position succeeded
-Paid 0.017 POL for gas
-Resgatadas: 2, falhas: 0. Valor total (aprox.): $4.22
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $2.17
 Exce��o: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
@@ -937,42 +945,37 @@ Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
-Txn hash: 0x31fe8f9cb06491a237a353739e91d38a570c0abad00392a06052f1d531d435db
-Redeem Position succeeded
-Paid 0.021 POL for gas
-Resgatadas: 1, falhas: 0. Valor total (aprox.): $2.15
-Exce��o: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
-Txn hash: 0xf863f78e098f16c243c3028d262675eb0fe820635adcf0d87917722ab390024a
-Redeem Position succeeded
-Paid 0.035 POL for gas
-Txn hash: 0xd0b493ae9ca1662b2cac0e27d557b1843e3d500874ba021a1491d0752d698cde
+Nenhuma posi��o para resgatar.
+Resgatadas: 0, falhas: 2. Valor total (aprox.): $6.91
+  Posi��o 1: {'message': 'already known', 'code': -32000}
+  Posi��o 2: {'message': 'replacement transaction underpriced', 'code': -32000}
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Txn hash: 0xf21a94633157c86c225d16e65c48e86efc397be4676a14919025f2b592d3bb57
 Redeem Position succeeded
 Paid 0.033 POL for gas
-Resgatadas: 2, falhas: 0. Valor total (aprox.): $6.91
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $0.77
 Exce��o: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
@@ -1023,43 +1026,14 @@ Exce��o: 'charmap' codec can't encode character '\u2192' in position 43: charact
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
-Txn hash: 0x017ebf7bc952f8bf0a734b346328290a6f5fc29f8bab89d95e3437c05806e330
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Txn hash: 0xaa1611984f82a98e7659b65c1e8fe542d18b287f08b2db7b47503935bcd137a1
 Redeem Position succeeded
-Paid 0.021 POL for gas
-Resgatadas: 1, falhas: 0.
-Exce��o: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Txn hash: 0xb5f5585ebbb473544d37ecdf09791f315231e174c5086e41612430888764b54f
-Redeem Position succeeded
-Paid 0.017 POL for gas
-Resgatadas: 1, falhas: 0.
-Exce��o: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Txn hash: 0xdcbe3b178c2b58ead053954ab68c0a9b5ad9849aca05b3befaa0f215e735b77c
-Redeem Position succeeded
-Paid 0.016 POL for gas
-Txn hash: 0x7bfba6b8a222badb968fb824895211693e183a86177262033bd407d1e846aff5
-Redeem Position succeeded
-Paid 0.02 POL for gas
-Resgatadas: 2, falhas: 0. Valor total (aprox.): $5.02
-Exce��o: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.
-Txn hash: 0x51776e0cdb75b56b6c9bab36aff0327eff905c2743fe5e5149358660395829d8
-Redeem Position failed
-Paid 0.009 POL for gas
+Paid 0.018 POL for gas
 Resgatadas: 1, falhas: 0.
 Exce��o: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
 Nenhuma posi��o para resgatar.
@@ -1080,6 +1054,25 @@ Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
+Txn hash: 0xf4b8f8419c7d2711461808e463293e58fa0acd9506a5faecd2c7d19e3694f514
+Redeem Position succeeded
+Paid 0.018 POL for gas
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $2.13
+Exce��o: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Txn hash: 0x1964d4771f3f7339bafa6cffbb16dea852234712f7e740787b4cbda97ff92f6e
+Redeem Position succeeded
+Paid 0.018 POL for gas
+Resgatadas: 1, falhas: 0. Valor total (aprox.): $0.03
+Exce��o: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
@@ -1105,32 +1098,49 @@ Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
 Nenhuma posi��o para resgatar.
-Nenhuma posi��o para resgatar.para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Resgatadas: 1, falhas: 0. Valor total (aprox.): $3.23
-Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Nenhuma posição para resgatar.
-Resgatadas: 1, falhas: 0. Valor total (aprox.): $5.65
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.
+Nenhuma posi��o para resgatar.: 1, falhas: 0. Valor total (aprox.): $5.65
 Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
 Resgatadas: 1, falhas: 0. Valor total (aprox.): $5.65
 Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
@@ -1438,6 +1448,356 @@ Resgatadas: 0, falhas: 1.
   Posição 1: {'message': 'replacement transaction underpriced', 'code': -32000}
 Resgatadas: 1, falhas: 0.
 Exceção: 'charmap' codec can't encode character '\u2192' in position 43: character maps to <undefined>
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
+Nenhuma posição para resgatar.
 Nenhuma posição para resgatar.
 Nenhuma posição para resgatar.
 Nenhuma posição para resgatar.
