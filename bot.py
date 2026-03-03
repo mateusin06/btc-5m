@@ -685,6 +685,7 @@ def main():
     args = parser.parse_args()
 
     config = load_config()
+    # --markets define exatamente em quais mercados operar; nenhum outro é adicionado (ex.: só btc15m = não opera em btc 5min)
     if args.markets:
         raw = args.markets.strip().lower()
         if raw == "both":

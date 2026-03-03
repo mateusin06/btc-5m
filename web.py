@@ -615,6 +615,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         )
     markets_list = req.markets if isinstance(req.markets, list) else [s.strip() for s in str(req.markets).split(",") if s.strip()]
     markets_list = [m for m in markets_list if m in ("btc", "eth", "btc15m")]
+    # Não adicionar nenhum mercado: só os selecionados pelo usuário (ex.: só btc15m = zero operação em btc 5min)
     if not markets_list:
         raise HTTPException(
             status_code=400,
