@@ -470,6 +470,13 @@
         if (c.only_hedge_bet != null) getEl('bot-only-hedge-bet').value = c.only_hedge_bet;
         if (c.arbitragem_pct != null) getEl('bot-arbitragem-pct').value = c.arbitragem_pct;
         if (c.aggressive_bet_pct != null) getEl('bot-aggressive-pct').value = c.aggressive_bet_pct;
+        // Sincronizar dropdown "Modo" do Iniciar com a config salva (evita iniciar em safe sem querer)
+        const modeEl = getEl('bot-mode');
+        if (c.bot_mode && ['safe','aggressive','only_hedge_plus','dry_run','arbitragem'].includes(c.bot_mode)) {
+          modeEl.value = c.bot_mode;
+        } else {
+          modeEl.value = 'safe';
+        }
       } catch (e) {
         console.error(e);
       }
@@ -731,11 +738,11 @@
       };
       if (mode === 'safe') {
         const v = parseFloat(getEl('bot-safe-bet').value);
-        if (!isNaN(v)) body.safe_bet = v;
+        body.safe_bet = (!isNaN(v) && v > 0) ? v : 5;
       }
       if (mode === 'aggressive') {
         const v = parseFloat(getEl('bot-aggressive-pct').value);
-        if (!isNaN(v)) body.aggressive_bet_pct = v;
+        body.aggressive_bet_pct = (!isNaN(v) && v >= 1 && v <= 100) ? v : 25;
       }
       if (mode === 'only_hedge_plus') {
         const v = parseFloat(getEl('bot-only-hedge-bet').value);

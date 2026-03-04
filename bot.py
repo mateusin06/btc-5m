@@ -16,7 +16,10 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-# Mercados: btc, eth, btc15m (combinações via lista)
+# Não sobrescrever variáveis já definidas (ex.: BOT_MODE passado pela web ao iniciar)
+load_dotenv(override=False)
+
+
 def _parse_markets() -> list[str]:
     v = (os.getenv("BOT_MARKETS") or "").strip().lower()
     if not v:
@@ -33,8 +36,6 @@ def _parse_markets() -> list[str]:
     if v == "btc":
         return ["btc"]
     return []
-
-load_dotenv()
 
 # Configurações de modos
 MODES = {
@@ -68,9 +69,14 @@ POLY_MIN_ORDER_USD = 1.0  # Polymarket exige mínimo $1 por ordem (marketable BU
 LIMIT_FALLBACK_PRICE = 0.95
 MAX_TOKEN_PRICE = float(os.getenv("MAX_TOKEN_PRICE", "0.98"))
 
-# Última janela em que apostamos por mercado (safe, only_hedge_plus, aggressive)
+# Última janela em que apostamos por mercado (para não repetir no mesmo mercado)
 _last_bet_window_by_market: dict[str, int] = {}
+# Uma aposta por janela globalmente (qualquer mercado; exceção: arb = duas pernas contam como uma operação)
+_last_bet_window_global: Optional[tuple[int, int]] = None  # (window_ts, window_sec)
+_window_lock = threading.Lock()
 _bankroll_lock = threading.Lock()
+# Modo fixado no arranque (fonte única de verdade; evita safe quando iniciou em aggressive)
+FROZEN_MODE: Optional[str] = None
 
 
 @dataclass
@@ -296,18 +302,25 @@ def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
         return False
 
 
-def run_trade_cycle(config: Config, market: str) -> bool:
-    """Executa um ciclo para um mercado (btc, eth ou btc15m): espera, analisa, opera."""
-    global _last_bet_window_by_market
+def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = None) -> bool:
+    """Executa um ciclo para um mercado (btc, eth ou btc15m): espera, analisa, opera.
+    active_mode: modo fixado no arranque (evita mistura safe/aggressive); se None, usa FROZEN_MODE ou config.mode.
+    """
+    global _last_bet_window_by_market, _last_bet_window_global
     from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market, get_btc_candles_1m
     from strategy import analyze
 
+    # Fonte única de verdade: SEMPRE usar FROZEN_MODE quando estiver definido (evita 2 compras com modos diferentes)
+    if FROZEN_MODE is not None:
+        active_mode = FROZEN_MODE
+    elif active_mode is None:
+        active_mode = config.mode
     is_15m = market == "btc15m"
     window_sec = WINDOW_SEC_15M if is_15m else WINDOW_SEC
     window_ts = get_window_ts_15m() if is_15m else get_window_ts()
     close_time = window_ts + window_sec
     monitor_secs = (
-        MONITOR_START_T_15M if is_15m else (WINDOW_SEC if config.mode == "arbitragem" else MONITOR_START_T)
+        MONITOR_START_T_15M if is_15m else (WINDOW_SEC if active_mode == "arbitragem" else MONITOR_START_T)
     )
 
     # Se já passou do prazo para operar nesta janela (ex.: thread reentrou logo após ciclo), usar próxima janela
@@ -361,7 +374,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
 
     while int(time.time()) < close_time - HARD_DEADLINE_T:
         # Modo arbitragem: prioridade para arb pura a cada iteração (Up+Down < 1-margem)
-        if config.mode == "arbitragem" and tokens and len(tokens) == 2 and event:
+        if active_mode == "arbitragem" and tokens and len(tokens) == 2 and event:
             from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
             price_up = _get_tok(tokens[0], "BUY") or _get_ev(event, "up")
             price_down = _get_tok(tokens[1], "BUY") or _get_ev(event, "down")
@@ -379,7 +392,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
         # Para btc15m usar candles 1m na TA para que todos os 7 indicadores da estratégia rodem
         candles = get_btc_candles_1m(limit=30) if is_15m else get_candles_by_market(market, limit=30)
         if not candles:
-            time.sleep(ARB_POLL_INTERVAL if config.mode == "arbitragem" else TA_POLL_INTERVAL)
+            time.sleep(ARB_POLL_INTERVAL if active_mode == "arbitragem" else TA_POLL_INTERVAL)
             continue
 
         result = analyze(window_open, price or candles[-1]["c"], candles, tick_prices[-20:] if tick_prices else None)
@@ -393,7 +406,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
             if result.confidence >= SPIKE_MIN_CONFIDENCE:
                 trade_direction = result.direction
                 final_result = result
-                if config.mode == "only_hedge_plus":
+                if active_mode == "only_hedge_plus":
                     if _check_ev_plus(trade_direction, final_result, tokens, event):
                         fired = True
                         print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} (EV+)", flush=True)
@@ -407,11 +420,11 @@ def run_trade_cycle(config: Config, market: str) -> bool:
             else:
                 print(f"  [{market.upper()}] SPIKE ignorado (confiança {result.confidence:.1%} < {SPIKE_MIN_CONFIDENCE:.0%})", flush=True)
 
-        mode_cfg = MODES.get(config.mode, MODES["safe"])
+        mode_cfg = MODES.get(active_mode, MODES["safe"])
         if result.confidence >= mode_cfg["min_confidence"]:
             trade_direction = result.direction
             final_result = result
-            if config.mode == "only_hedge_plus":
+            if active_mode == "only_hedge_plus":
                 if _check_ev_plus(trade_direction, final_result, tokens, event):
                     fired = True
                     print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction} (EV+)", flush=True)
@@ -424,7 +437,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                 break
 
         prev_score = result.score
-        poll = ARB_POLL_INTERVAL if config.mode == "arbitragem" else TA_POLL_INTERVAL
+        poll = ARB_POLL_INTERVAL if active_mode == "arbitragem" else TA_POLL_INTERVAL
         time.sleep(poll)
 
     if not fired and best_result:
@@ -433,7 +446,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
         # T-5s mais assertivo: só entra se o melhor sinal tiver confiança mínima
         if best_result.confidence < T5S_MIN_CONFIDENCE:
             print(f"  [{market.upper()}] T-5s: melhor sinal com confiança {best_result.confidence:.1%} < {T5S_MIN_CONFIDENCE:.0%}, pulando.", flush=True)
-        elif config.mode == "only_hedge_plus":
+        elif active_mode == "only_hedge_plus":
             if _check_ev_plus(trade_direction, final_result, tokens, event):
                 fired = True
                 print(f"  [{market.upper()}] T-5s: melhor sinal -> {trade_direction} (score {best_score:.2f}) [EV+]", flush=True)
@@ -457,19 +470,19 @@ def run_trade_cycle(config: Config, market: str) -> bool:
         _sync_balance_allowance(client_temp)
         api_bankroll = get_bankroll_from_api(client_temp) or config.bankroll
 
-    if config.mode == "safe" and config.fixed_bet_safe is not None:
+    if active_mode == "safe" and config.fixed_bet_safe is not None:
         bet_size = config.fixed_bet_safe
-    elif config.mode == "only_hedge_plus":
+    elif active_mode == "only_hedge_plus":
         bet_size = config.fixed_bet_only_hedge if config.fixed_bet_only_hedge is not None else config.min_bet
-    elif config.mode == "arbitragem" and config.arbitragem_bet_pct is not None:
+    elif active_mode == "arbitragem" and config.arbitragem_bet_pct is not None:
         bankroll = api_bankroll if api_bankroll is not None else config.bankroll
         bet_size = bankroll * config.arbitragem_bet_pct
-    elif config.mode == "aggressive":
-        mode_cfg = MODES.get(config.mode, MODES["safe"])
+    elif active_mode == "aggressive":
+        mode_cfg = MODES.get(active_mode, MODES["safe"])
         bankroll = api_bankroll if api_bankroll is not None else config.bankroll
         bet_size = bankroll * mode_cfg.get("bet_pct", 0.25)
     else:
-        bet_size = (api_bankroll or config.bankroll) * MODES.get(config.mode, MODES["safe"]).get("bet_pct", 0.25)
+        bet_size = (api_bankroll or config.bankroll) * MODES.get(active_mode, MODES["safe"]).get("bet_pct", 0.25)
 
     bet_size = max(bet_size, config.min_bet)
     bet_size = max(bet_size, POLY_MIN_ORDER_USD)  # Polymarket exige mínimo $1 por ordem
@@ -477,8 +490,8 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     if bet_size > cap:
         bet_size = cap
 
-    if config.mode in ("aggressive", "arbitragem") and api_bankroll is not None:
-        pct = (config.arbitragem_bet_pct * 100) if config.mode == "arbitragem" else (MODES.get(config.mode, MODES["safe"]).get("bet_pct", 0.25) * 100)
+    if active_mode in ("aggressive", "arbitragem") and api_bankroll is not None:
+        pct = (config.arbitragem_bet_pct * 100) if active_mode == "arbitragem" else (MODES.get(active_mode, MODES["safe"]).get("bet_pct", 0.25) * 100)
         print(f"  [{market.upper()}] Saldo API: ${api_bankroll:.2f} | aposta {pct:.0f}% = ${bet_size:.2f}", flush=True)
 
     if bet_size < config.min_bet:
@@ -488,7 +501,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     # 5. Dry run
     if config.dry_run:
         from api import get_token_price, get_token_price_from_event
-        if config.mode == "arbitragem" and (trade_direction == "arb_pura" or (tokens and len(tokens) == 2 and event)):
+        if active_mode == "arbitragem" and (trade_direction == "arb_pura" or (tokens and len(tokens) == 2 and event)):
             price_up = get_token_price(tokens[0], "BUY") or get_token_price_from_event(event, "up")
             price_down = get_token_price(tokens[1], "BUY") or get_token_price_from_event(event, "down")
             if price_up is not None and price_down is not None and 0 < price_up < 1 and 0 < price_down < 1:
@@ -521,11 +534,11 @@ def run_trade_cycle(config: Config, market: str) -> bool:
             if token_price is None:
                 token_price = delta_to_token_price(final_result.window_delta_pct if final_result else 0)
             if token_price > MAX_TOKEN_PRICE:
-                if config.mode != "arbitragem":
+                if active_mode != "arbitragem":
                     print(f"  [{market.upper()}] Token @ ${token_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
                     return False
             shares = bet_size / token_price
-            if config.mode == "arbitragem" and tokens and len(tokens) == 2:
+            if active_mode == "arbitragem" and tokens and len(tokens) == 2:
                 token_other_id = tokens[1] if trade_direction == "up" else tokens[0]
                 max_other_price = (1.0 - ARB_MIN_PROFIT_PCT) - token_price
                 if max_other_price > 0:
@@ -538,7 +551,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                             print(f"  [{market.upper()}] DRY RUN: {trade_direction.upper()} @ ${token_price:.2f} + hedge @ ${other_price:.2f} | aposta: {bet_pct_arb:.1f}% da banca", flush=True)
                             return True
                         time.sleep(ARB_POLL_INTERVAL)
-            if config.mode == "only_hedge_plus" and final_result is not None:
+            if active_mode == "only_hedge_plus" and final_result is not None:
                 p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
                 dynamic_margin = _dynamic_ev_margin(final_result)
                 if p_win <= token_price + dynamic_margin:
@@ -546,7 +559,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
                     return False
             bet_pct = (bet_size / config.bankroll) * 100 if config.bankroll else 0
             ev_edge = ""
-            if config.mode == "only_hedge_plus" and final_result is not None:
+            if active_mode == "only_hedge_plus" and final_result is not None:
                 p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
                 edge_pct = (p_win - token_price) * 100
                 ev_edge = f" | EV+ edge: {edge_pct:.1f}%"
@@ -562,16 +575,23 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     token_id = tokens[0] if trade_direction == "up" else tokens[1]
     real_price = get_token_price(token_id, "BUY")
     # Log de operação real (auditoria)
-    print(f"  [{market.upper()}] REAL | modo={config.mode} janela={window_ts} {trade_direction.upper()} ${bet_size:.2f}", flush=True)
-    if real_price is not None and real_price > MAX_TOKEN_PRICE and config.mode != "arbitragem":
+    print(f"  [{market.upper()}] REAL | modo={active_mode} janela={window_ts} {trade_direction.upper()} ${bet_size:.2f}", flush=True)
+    if real_price is not None and real_price > MAX_TOKEN_PRICE and active_mode != "arbitragem":
         print(f"  [{market.upper()}] Token @ ${real_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
         return False
-    if config.mode == "only_hedge_plus" and final_result is not None and real_price is not None:
+    if active_mode == "only_hedge_plus" and final_result is not None and real_price is not None:
         p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
         dynamic_margin = _dynamic_ev_margin(final_result)
         if p_win <= real_price + dynamic_margin:
             print(f"  [{market.upper()}] EV+ não mais válido: P(win)={p_win:.1%} <= preço ${real_price:.2f}+margem {dynamic_margin:.0%}, pulando.", flush=True)
             return False
+
+    # Uma aposta por janela globalmente — reservar só aqui, após passar todas as checagens (preço, EV+, etc.)
+    with _window_lock:
+        if _last_bet_window_global is not None and _last_bet_window_global == (window_ts, window_sec):
+            print(f"  [{market.upper()}] Outro mercado já apostou nesta janela, pulando.", flush=True)
+            return False
+        _last_bet_window_global = (window_ts, window_sec)
 
     # 6. Executar ordem(s)
     client = create_clob_client()
@@ -583,7 +603,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
     arb_first_one_fill = False
     arb_shares = None
 
-    if config.mode == "arbitragem" and tokens and len(tokens) == 2:
+    if active_mode == "arbitragem" and tokens and len(tokens) == 2:
         price_up = get_token_price(tokens[0], "BUY")
         price_down = get_token_price(tokens[1], "BUY")
         if (price_up is not None and price_down is not None
@@ -626,7 +646,7 @@ def run_trade_cycle(config: Config, market: str) -> bool:
 
     if ok:
         print(f"  [{market.upper()}] Ordem executada: {trade_direction.upper()} ${bet_size:.2f}", flush=True)
-        if config.mode == "arbitragem" and real_price is not None and tokens and len(tokens) == 2:
+        if active_mode == "arbitragem" and real_price is not None and tokens and len(tokens) == 2:
             other_token_id = tokens[1] if trade_direction == "up" else tokens[0]
             buy_price = real_price
             shares_arb = arb_shares if arb_first_one_fill and arb_shares is not None else bet_size / buy_price
@@ -652,6 +672,11 @@ def run_trade_cycle(config: Config, market: str) -> bool:
 
     if ok:
         _last_bet_window_by_market[market] = window_ts
+    else:
+        # Liberar a janela para outro mercado tentar (esta ordem falhou)
+        with _window_lock:
+            if _last_bet_window_global == (window_ts, window_sec):
+                _last_bet_window_global = None
     return ok
 
 
@@ -659,11 +684,12 @@ def _market_loop(
     config: Config,
     market: str,
     shared: dict,
+    startup_mode: str,
 ) -> None:
-    """Roda ciclos para um único mercado em loop (para execução paralela)."""
+    """Roda ciclos para um único mercado em loop (para execução paralela). startup_mode = modo fixado no arranque."""
     while not shared.get("stop"):
         try:
-            if run_trade_cycle(config, market):
+            if run_trade_cycle(config, market, active_mode=startup_mode):
                 with shared["trades_lock"]:
                     shared["trades"] += 1
                     if config.max_trades and shared["trades"] >= config.max_trades:
@@ -682,6 +708,7 @@ def _market_loop(
 
 
 def main():
+    global FROZEN_MODE
     parser = argparse.ArgumentParser(description="Polymarket BTC 5-Min Up/Down Bot")
     parser.add_argument("--dry-run", action="store_true", help="Simular sem ordens reais")
     parser.add_argument("--mode", choices=["safe", "aggressive", "degen", "arbitragem", "only_hedge_plus"], help="Modo de trading")
@@ -692,6 +719,9 @@ def main():
     parser.add_argument("--max-trades", type=int, help="Máximo de trades (dry-run)")
     parser.add_argument("--markets", type=str, metavar="LIST", help="Mercados: btc, eth, btc15m (ex: btc,btc15m ou both para btc+eth)")
     args = parser.parse_args()
+
+    # Diagnóstico: o que o processo recebeu (para conferir se web/CLI passou --mode certo)
+    print(f"CLI recebido: --mode={args.mode!r} | BOT_MODE(env)={os.getenv('BOT_MODE', '(não definido)')!r}", flush=True)
 
     config = load_config()
     # --markets define exatamente em quais mercados operar; nenhum outro é adicionado (ex.: só btc15m = não opera em btc 5min)
@@ -708,9 +738,12 @@ def main():
     if not config.markets:
         print("Erro: nenhum mercado selecionado. Use --markets btc,eth,btc15m (ou pelo menos um).", flush=True)
         sys.exit(1)
+    # Modo: prioridade para --mode; se não veio pela CLI, usar BOT_MODE do ambiente (web define ao iniciar)
+    config.mode = args.mode if args.mode is not None else os.getenv("BOT_MODE", "safe")
+    FROZEN_MODE = config.mode  # fixar AGORA; nenhum ciclo pode usar outro modo
+    if args.mode is None:
+        print(f"Modo definido pelo ambiente (BOT_MODE): {config.mode}", flush=True)
     config.dry_run = args.dry_run
-    if args.mode:
-        config.mode = args.mode
     config.once = args.once
     config.max_trades = args.max_trades
 
@@ -811,8 +844,11 @@ def main():
     print("-" * 50, flush=True)
 
     shared = {"stop": False, "trades": 0, "trades_lock": threading.Lock()}
+    startup_mode = config.mode
+    FROZEN_MODE = startup_mode  # fonte única de verdade para todos os ciclos
+    print(f"Modo fixado para esta execução: {startup_mode}", flush=True)
     threads = [
-        threading.Thread(target=_market_loop, args=(config, market, shared), name=f"bot-{market}")
+        threading.Thread(target=_market_loop, args=(config, market, shared, startup_mode), name=f"bot-{market}")
         for market in config.markets
     ]
     for t in threads:

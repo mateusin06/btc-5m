@@ -658,20 +658,38 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     env["STARTING_BANKROLL"] = str(row.get("starting_bankroll", 10))
     env["MIN_BET"] = str(row.get("min_bet", 5))
     env["BOT_MODE"] = mode
-    env["AGGRESSIVE_BET_PCT"] = str(int(req.aggressive_bet_pct if req.aggressive_bet_pct is not None else row.get("aggressive_bet_pct", 25)))
+    pct_aggressive = req.aggressive_bet_pct if req.aggressive_bet_pct is not None else (row.get("aggressive_bet_pct") if row.get("aggressive_bet_pct") is not None else 25)
+    if isinstance(pct_aggressive, float):
+        pct_aggressive = int(round(pct_aggressive))
+    env["AGGRESSIVE_BET_PCT"] = str(max(1, min(100, pct_aggressive)))
     env["MAX_TOKEN_PRICE"] = str(row.get("max_token_price", 0.9))
     env["ARB_MIN_PROFIT_PCT"] = str(row.get("arb_min_profit_pct", 0.04))
     env["BOT_MARKETS"] = ",".join(markets_list)
     safe_id = _safe_user_id(user["id"])
     env["BOT_USER_ID"] = safe_id
 
+    # Atualizar Supabase com o modo (e parâmetros) usados ao iniciar — assim bot_mode fica sincronizado
+    try:
+        start_config: dict = {"bot_mode": mode}
+        if mode == "safe" and (req.safe_bet is not None or (row.get("safe_bet") and float(row["safe_bet"]))):
+            start_config["safe_bet"] = req.safe_bet if req.safe_bet is not None else float(row["safe_bet"])
+        if mode == "aggressive":
+            start_config["aggressive_bet_pct"] = int(round(pct_aggressive))
+        if mode == "only_hedge_plus" and (req.only_hedge_bet is not None or (row.get("only_hedge_bet") and float(row["only_hedge_bet"]))):
+            start_config["only_hedge_bet"] = req.only_hedge_bet if req.only_hedge_bet is not None else float(row["only_hedge_bet"])
+        if mode == "arbitragem" and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
+            start_config["arbitragem_pct"] = int(req.arbitragem_pct if req.arbitragem_pct is not None else float(row["arbitragem_pct"]))
+        _config_to_supabase(user_id, user["_token"], start_config, user.get("email"))
+    except Exception:
+        pass  # não falhar o start se o update da config falhar
+
     cmd = [sys.executable, str(PROJECT_ROOT / "bot.py"), "--mode", mode, "--markets", ",".join(markets_list)]
     if dry_run:
         cmd.append("--dry-run")
     if mode == "safe":
-        bet = req.safe_bet if req.safe_bet is not None else row.get("safe_bet")
-        if bet is not None:
-            cmd.extend(["--safe-bet", str(bet)])
+        safe_bet_val = req.safe_bet if req.safe_bet is not None else (float(row["safe_bet"]) if row.get("safe_bet") else None)
+        if safe_bet_val is not None:
+            cmd.extend(["--safe-bet", str(round(safe_bet_val, 2))])
     if mode == "only_hedge_plus":
         bet = req.only_hedge_bet if req.only_hedge_bet is not None else row.get("only_hedge_bet")
         if bet is not None:
@@ -685,8 +703,20 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     log_path = log_dir / f"resultados_{safe_id}.txt"
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
+        extra = ""
+        if mode == "aggressive":
+            extra = f" aggressive_pct={pct_aggressive}%"
+        elif mode == "safe" and (req.safe_bet is not None or (row.get("safe_bet") and float(row["safe_bet"]))):
+            bet = req.safe_bet if req.safe_bet is not None else float(row["safe_bet"])
+            extra = f" safe_bet=${bet:.2f}"
+        elif mode == "only_hedge_plus" and (req.only_hedge_bet is not None or (row.get("only_hedge_bet") and float(row["only_hedge_bet"]))):
+            bet = req.only_hedge_bet if req.only_hedge_bet is not None else float(row["only_hedge_bet"])
+            extra = f" only_hedge_bet=${bet:.2f}"
+        elif mode == "arbitragem" and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
+            pct = req.arbitragem_pct if req.arbitragem_pct is not None else float(row["arbitragem_pct"])
+            extra = f" arbitragem_pct={int(round(pct * 100))}%"
         with open(log_path, "w", encoding="utf-8") as log_file:
-            log_file.write(f"--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode} dry_run={dry_run} markets={','.join(markets_list)} ---\n")
+            log_file.write(f"--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode}{extra} dry_run={dry_run} markets={','.join(markets_list)} ---\n")
         stdout_dest = open(log_path, "a", encoding="utf-8")
         stderr_dest = open(log_path, "a", encoding="utf-8")
     except Exception as e:
