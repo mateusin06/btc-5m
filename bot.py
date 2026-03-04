@@ -69,11 +69,8 @@ POLY_MIN_ORDER_USD = 1.0  # Polymarket exige mínimo $1 por ordem (marketable BU
 LIMIT_FALLBACK_PRICE = 0.95
 MAX_TOKEN_PRICE = float(os.getenv("MAX_TOKEN_PRICE", "0.98"))
 
-# Última janela em que apostamos por mercado (para não repetir no mesmo mercado)
+# Última janela em que apostamos por mercado (evita repetir no mesmo mercado na mesma janela)
 _last_bet_window_by_market: dict[str, int] = {}
-# Uma aposta por janela globalmente (qualquer mercado; exceção: arb = duas pernas contam como uma operação)
-_last_bet_window_global: Optional[tuple[int, int]] = None  # (window_ts, window_sec)
-_window_lock = threading.Lock()
 _bankroll_lock = threading.Lock()
 # Modo fixado no arranque (fonte única de verdade; evita safe quando iniciou em aggressive)
 FROZEN_MODE: Optional[str] = None
@@ -306,7 +303,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     """Executa um ciclo para um mercado (btc, eth ou btc15m): espera, analisa, opera.
     active_mode: modo fixado no arranque (evita mistura safe/aggressive); se None, usa FROZEN_MODE ou config.mode.
     """
-    global _last_bet_window_by_market, _last_bet_window_global
+    global _last_bet_window_by_market
     from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market, get_btc_candles_1m
     from strategy import analyze
 
@@ -586,13 +583,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
             print(f"  [{market.upper()}] EV+ não mais válido: P(win)={p_win:.1%} <= preço ${real_price:.2f}+margem {dynamic_margin:.0%}, pulando.", flush=True)
             return False
 
-    # Uma aposta por janela globalmente — reservar só aqui, após passar todas as checagens (preço, EV+, etc.)
-    with _window_lock:
-        if _last_bet_window_global is not None and _last_bet_window_global == (window_ts, window_sec):
-            print(f"  [{market.upper()}] Outro mercado já apostou nesta janela, pulando.", flush=True)
-            return False
-        _last_bet_window_global = (window_ts, window_sec)
-
+    # Cada mercado pode apostar uma vez na sua janela; não travar outros mercados (btc/eth/btc15m independentes)
     # 6. Executar ordem(s)
     client = create_clob_client()
     # Sync agressivo para proxy/safe: API pode precisar de múltiplas chamadas para reconhecer allowance
@@ -672,11 +663,6 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
 
     if ok:
         _last_bet_window_by_market[market] = window_ts
-    else:
-        # Liberar a janela para outro mercado tentar (esta ordem falhou)
-        with _window_lock:
-            if _last_bet_window_global == (window_ts, window_sec):
-                _last_bet_window_global = None
     return ok
 
 

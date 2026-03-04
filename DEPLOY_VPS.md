@@ -88,8 +88,8 @@ Troque a URL pelo seu repositório (GitHub/GitLab):
 
 ```bash
 cd /root
-git clone https://github.com/SEU_USUARIO/BOT_Polymarket.git
-cd BOT_Polymarket
+git clone https://github.com/mateusin06/btc-5m
+cd btc-5m
 ```
 
 Se você não usa Git ainda, pode enviar os arquivos por SFTP/SCP para `/root/BOT_Polymarket`.
@@ -167,7 +167,7 @@ source venv/bin/activate
 uvicorn web:app --host 0.0.0.0 --port 8000
 ```
 
-Acesse no navegador: `http://SEU_IP_VPS:8000`. Deve abrir o dashboard. Pare o servidor com `Ctrl+C`.
+Acesse no navegador: `http://62.72.23.75:8000`. Deve abrir o dashboard. Pare o servidor com `Ctrl+C`.
 
 ---
 
@@ -191,9 +191,9 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/BOT_Polymarket
-Environment=PATH=/root/BOT_Polymarket/venv/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/root/BOT_Polymarket/venv/bin/uvicorn web:app --host 127.0.0.1 --port 8000
+WorkingDirectory=/root/btc-5m
+Environment=PATH=/root/btc-5m/venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/root/btc-5m/venv/bin/uvicorn web:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=10
 
@@ -237,7 +237,7 @@ Se for acessar por **IP**:
 ```nginx
 server {
     listen 80 default_server;
-    server_name _;
+    server_name polybtc5m.duckdns.org;
     root /root/BOT_Polymarket/frontend;
     index index.html;
 
