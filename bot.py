@@ -330,7 +330,6 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
 
     # Não apostar mais de uma vez na mesma janela por mercado (1 compra por mercado por janela)
     if _last_bet_window_by_market.get(market) == window_ts:
-        print(f"  [{market.upper()}] Já apostou nesta janela, pulando.", flush=True)
         return False
 
     while True:
