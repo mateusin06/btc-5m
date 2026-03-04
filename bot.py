@@ -328,8 +328,9 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
 
     slug = f"btc-updown-15m-{window_ts}" if is_15m else f"{market}-updown-5m-{window_ts}"
 
-    # Não apostar mais de uma vez na mesma janela por mercado
+    # Não apostar mais de uma vez na mesma janela por mercado (1 compra por mercado por janela)
     if _last_bet_window_by_market.get(market) == window_ts:
+        print(f"  [{market.upper()}] Já apostou nesta janela, pulando.", flush=True)
         return False
 
     while True:
@@ -546,6 +547,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                             total_cost = bet_size + cost_second
                             bet_pct_arb = (total_cost / config.bankroll) * 100 if config.bankroll else 0
                             print(f"  [{market.upper()}] DRY RUN: {trade_direction.upper()} @ ${token_price:.2f} + hedge @ ${other_price:.2f} | aposta: {bet_pct_arb:.1f}% da banca", flush=True)
+                            _last_bet_window_by_market[market] = window_ts
                             return True
                         time.sleep(ARB_POLL_INTERVAL)
             if active_mode == "only_hedge_plus" and final_result is not None:
