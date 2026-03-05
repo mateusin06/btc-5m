@@ -247,6 +247,10 @@ class BotStartRequest(BaseModel):
     only_hedge_bet: Optional[float] = None
     aggressive_bet_pct: Optional[float] = None
     arbitragem_pct: Optional[float] = None
+    stop_win_enabled: bool = Field(False, description="Ativar take profit (parar ao atingir % de lucro)")
+    stop_win_pct: Optional[float] = None
+    stop_loss_enabled: bool = Field(False, description="Ativar stop loss (parar ao atingir % de perda)")
+    stop_loss_pct: Optional[float] = None
 
 
 class BotStatusResponse(BaseModel):
@@ -667,6 +671,21 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     env["BOT_MARKETS"] = ",".join(markets_list)
     safe_id = _safe_user_id(user["id"])
     env["BOT_USER_ID"] = safe_id
+
+    # Stop Win / Stop Loss: bankroll inicial da config; % enviados pelo usuário
+    if getattr(req, "stop_win_enabled", False) or getattr(req, "stop_loss_enabled", False):
+        initial = float(row.get("starting_bankroll", 10))
+        env["STOP_WIN_LOSS_INITIAL_BANKROLL"] = str(initial)
+        env["STOP_WIN_ENABLED"] = "1" if getattr(req, "stop_win_enabled", False) else "0"
+        env["STOP_LOSS_ENABLED"] = "1" if getattr(req, "stop_loss_enabled", False) else "0"
+        if getattr(req, "stop_win_enabled", False) and req.stop_win_pct is not None:
+            env["STOP_WIN_PCT"] = str(max(0.1, min(500, float(req.stop_win_pct))))
+        else:
+            env["STOP_WIN_PCT"] = "0"
+        if getattr(req, "stop_loss_enabled", False) and req.stop_loss_pct is not None:
+            env["STOP_LOSS_PCT"] = str(max(0.1, min(100, float(req.stop_loss_pct))))
+        else:
+            env["STOP_LOSS_PCT"] = "0"
 
     # Atualizar Supabase com o modo (e parâmetros) usados ao iniciar — assim bot_mode fica sincronizado
     try:

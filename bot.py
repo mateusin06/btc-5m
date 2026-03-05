@@ -299,7 +299,7 @@ def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
         return False
 
 
-def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = None) -> bool:
+def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = None, shared: Optional[dict] = None) -> bool:
     """Executa um ciclo para um mercado (btc, eth ou btc15m): espera, analisa, opera.
     active_mode: modo fixado no arranque (evita mistura safe/aggressive); se None, usa FROZEN_MODE ou config.mode.
     """
@@ -466,6 +466,30 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         client_temp = create_clob_client()
         _sync_balance_allowance(client_temp)
         api_bankroll = get_bankroll_from_api(client_temp) or config.bankroll
+
+        # Stop Win / Stop Loss: comparar bankroll atual (API) com o inicial (config)
+        try:
+            stop_win_enabled = (os.getenv("STOP_WIN_ENABLED") or "").strip() in ("1", "true", "yes")
+            stop_loss_enabled = (os.getenv("STOP_LOSS_ENABLED") or "").strip() in ("1", "true", "yes")
+            initial_str = os.getenv("STOP_WIN_LOSS_INITIAL_BANKROLL") or ""
+            initial = float(initial_str) if initial_str else (getattr(config, "original_bankroll", None) or config.bankroll)
+            if (stop_win_enabled or stop_loss_enabled) and api_bankroll is not None and initial > 0:
+                if stop_win_enabled:
+                    pct = float(os.getenv("STOP_WIN_PCT", "0") or "0")
+                    if pct > 0 and api_bankroll >= initial * (1 + pct / 100):
+                        print(f"  [STOP WIN] Bankroll ${api_bankroll:.2f} >= inicial ${initial:.2f} + {pct:.1f}% (${initial * (1 + pct/100):.2f}). Parando.", flush=True)
+                        if shared is not None:
+                            shared["stop"] = True
+                        return False
+                if stop_loss_enabled:
+                    pct = float(os.getenv("STOP_LOSS_PCT", "0") or "0")
+                    if pct > 0 and api_bankroll <= initial * (1 - pct / 100):
+                        print(f"  [STOP LOSS] Bankroll ${api_bankroll:.2f} <= inicial ${initial:.2f} - {pct:.1f}% (${initial * (1 - pct/100):.2f}). Parando.", flush=True)
+                        if shared is not None:
+                            shared["stop"] = True
+                        return False
+        except (ValueError, TypeError):
+            pass
 
     if active_mode == "safe" and config.fixed_bet_safe is not None:
         bet_size = config.fixed_bet_safe
@@ -676,7 +700,7 @@ def _market_loop(
     """Roda ciclos para um único mercado em loop (para execução paralela). startup_mode = modo fixado no arranque."""
     while not shared.get("stop"):
         try:
-            if run_trade_cycle(config, market, active_mode=startup_mode):
+            if run_trade_cycle(config, market, active_mode=startup_mode, shared=shared):
                 with shared["trades_lock"]:
                     shared["trades"] += 1
                     if config.max_trades and shared["trades"] >= config.max_trades:

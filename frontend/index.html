@@ -261,6 +261,20 @@
               <span class="text-sm">Dry run (simular sem ordens reais)</span>
             </label>
           </div>
+          <div class="space-y-3">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="bot-stop-win" class="rounded border-border" />
+              <span class="text-sm">Ativar Stop Win (take profit)</span>
+              <input type="number" id="bot-stop-win-pct" min="1" max="500" placeholder="50" class="w-16 bg-[#0f1116] border border-border rounded px-2 py-1 text-sm" title="% de lucro sobre o bankroll inicial" />
+              <span class="text-xs text-muted">%</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="bot-stop-loss" class="rounded border-border" />
+              <span class="text-sm">Ativar Stop Loss</span>
+              <input type="number" id="bot-stop-loss-pct" min="1" max="100" placeholder="50" class="w-16 bg-[#0f1116] border border-border rounded px-2 py-1 text-sm" title="% de perda sobre o bankroll inicial" />
+              <span class="text-xs text-muted">%</span>
+            </label>
+          </div>
           <div class="flex gap-3">
             <button type="button" id="btn-bot-start" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Iniciar</button>
             <button type="button" id="btn-bot-stop" class="px-4 py-2 bg-danger text-white font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Parar</button>
@@ -752,6 +766,12 @@
         const v = parseFloat(getEl('bot-arbitragem-pct').value);
         if (!isNaN(v)) body.arbitragem_pct = v;
       }
+      body.stop_win_enabled = getEl('bot-stop-win').checked;
+      const stopWinPct = parseFloat(getEl('bot-stop-win-pct').value);
+      if (body.stop_win_enabled && !isNaN(stopWinPct) && stopWinPct >= 1) body.stop_win_pct = stopWinPct;
+      body.stop_loss_enabled = getEl('bot-stop-loss').checked;
+      const stopLossPct = parseFloat(getEl('bot-stop-loss-pct').value);
+      if (body.stop_loss_enabled && !isNaN(stopLossPct) && stopLossPct >= 1) body.stop_loss_pct = stopLossPct;
       try {
         const r = await fetch(API + '/api/bot/start', {
           method: 'POST',
