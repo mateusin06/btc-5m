@@ -36,6 +36,12 @@ ENV_FILE = PROJECT_ROOT / ".env"
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://thkvxvdjcxunitxpeivg.supabase.co").rstrip("/")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoa3Z4dmRqY3h1bml0eHBlaXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNzg3NDEsImV4cCI6MjA4Nzk1NDc0MX0.znZAXuiFZaU1R_6h6TYBXd-765pgoxmbditxRXrmHN8")
+ADMIN_EMAIL = "malagueta.canal@gmail.com"
+SUPABASE_SERVICE_ROLE_KEY = (
+    os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    or "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoa3Z4dmRqY3h1bml0eHBlaXZnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjM3ODc0MSwiZXhwIjoyMDg3OTU0NzQxfQ.5lJAxLoDkuINpkBmbM3iiJmK3wSnqHZA6ZxdcE6hDkI"
+)
+PAYMENT_WALLET = "0x17Ddf5d22fCF360E8D0dAED4e83717aeb1d47836"
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -133,6 +139,13 @@ async def get_current_user(authorization: Optional[str] = Header(None, alias="Au
     return {"id": user["id"], "email": user.get("email", ""), "_token": token}
 
 
+def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    """Dependência: exige que o usuário seja o admin (malagueta.canal@gmail.com)."""
+    if (user.get("email") or "").strip().lower() != ADMIN_EMAIL.strip().lower():
+        raise HTTPException(status_code=403, detail="Acesso restrito ao administrador.")
+    return user
+
+
 def _supabase_headers(token: str) -> dict:
     return {
         "Authorization": f"Bearer {token}",
@@ -191,6 +204,99 @@ def _safe_user_id(user_id: str) -> str:
     return s or "default"
 
 
+def _parse_iso_date(s: Any) -> Optional[datetime]:
+    """Converte string ISO do Supabase para datetime com timezone."""
+    if s is None:
+        return None
+    if isinstance(s, datetime):
+        return s if s.tzinfo else s.replace(tzinfo=timezone.utc)
+    try:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _ensure_trial_row(user_id: str, token: str, email: str) -> None:
+    """Cria a linha em user_config com trial de 2 dias se ainda não existir."""
+    existing = _config_from_supabase(user_id, token)
+    if existing:
+        return
+    trial_end = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
+    try:
+        requests.post(
+            f"{SUPABASE_URL}/rest/v1/user_config",
+            headers={**_supabase_headers(token), "Content-Type": "application/json"},
+            json={"user_id": user_id, "email": email or "", "trial_ends_at": trial_end},
+            timeout=10,
+        )
+    except Exception:
+        pass
+
+
+def _user_can_use_bot(row: dict) -> tuple[bool, str]:
+    """Retorna (pode_usar, motivo). Motivo: 'trial' | 'subscription' | 'expired'."""
+    now = datetime.now(timezone.utc)
+    trial_end = _parse_iso_date(row.get("trial_ends_at"))
+    sub_end = _parse_iso_date(row.get("subscription_ends_at"))
+    if trial_end and now <= trial_end:
+        return (True, "trial")
+    if sub_end and now <= sub_end:
+        return (True, "subscription")
+    return (False, "expired")
+
+
+def _admin_headers() -> dict:
+    """Headers para chamadas Supabase com service role (só para admin)."""
+    if not SUPABASE_SERVICE_ROLE_KEY:
+        raise HTTPException(status_code=503, detail="SUPABASE_SERVICE_ROLE_KEY não configurada.")
+    return {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+
+def _admin_get_all_user_configs() -> list[dict]:
+    """Lista todas as linhas de user_config (usa service role)."""
+    r = requests.get(
+        f"{SUPABASE_URL}/rest/v1/user_config",
+        params={"select": "user_id,email,trial_ends_at,subscription_ends_at,created_at,updated_at", "order": "updated_at.desc"},
+        headers=_admin_headers(),
+        timeout=10,
+    )
+    r.raise_for_status()
+    return r.json() if r.json() else []
+
+
+def _admin_grant_days(user_id: str, add_days: int = 30) -> None:
+    """Estende subscription_ends_at do usuário (usa service role)."""
+    r = requests.get(
+        f"{SUPABASE_URL}/rest/v1/user_config",
+        params={"user_id": f"eq.{user_id}", "select": "subscription_ends_at"},
+        headers=_admin_headers(),
+        timeout=10,
+    )
+    r.raise_for_status()
+    rows = r.json() if r.json() else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado em user_config.")
+    now = datetime.now(timezone.utc)
+    current_end = _parse_iso_date(rows[0].get("subscription_ends_at"))
+    if current_end and current_end > now:
+        new_end = current_end + timedelta(days=add_days)
+    else:
+        new_end = now + timedelta(days=add_days)
+    patch_r = requests.patch(
+        f"{SUPABASE_URL}/rest/v1/user_config",
+        params={"user_id": f"eq.{user_id}"},
+        headers=_admin_headers(),
+        json={"subscription_ends_at": new_end.isoformat()},
+        timeout=10,
+    )
+    patch_r.raise_for_status()
+
+
 # --- Modelos ---
 
 class DeriveCredsRequest(BaseModel):
@@ -237,6 +343,11 @@ class ConfigResponse(BaseModel):
     arbitragem_pct: Optional[float] = None
     has_private_key: bool
     has_api_creds: bool
+    access_ok: bool = True
+    access_reason: Optional[str] = None
+    trial_ends_at: Optional[str] = None
+    subscription_ends_at: Optional[str] = None
+    payment_wallet: Optional[str] = None
 
 
 class BotStartRequest(BaseModel):
@@ -263,6 +374,11 @@ class BotStatusResponse(BaseModel):
 class AutoclaimStatusResponse(BaseModel):
     running: bool
     pid: Optional[int] = None
+
+
+class AdminGrantAccessRequest(BaseModel):
+    user_id: Optional[str] = None
+    email: Optional[str] = None
 
 
 def _read_env() -> dict[str, str]:
@@ -365,6 +481,9 @@ def get_config(user: dict = Depends(get_current_user)):
     """Retorna config do usuário no Supabase (sem expor chave privada nem secret)."""
     row = _config_from_supabase(user["id"], user["_token"])
     if not row:
+        _ensure_trial_row(user["id"], user["_token"], user.get("email", ""))
+        row = _config_from_supabase(user["id"], user["_token"])
+    if not row:
         return ConfigResponse(
             funder_address="",
             signature_type=0,
@@ -379,7 +498,15 @@ def get_config(user: dict = Depends(get_current_user)):
             arbitragem_pct=None,
             has_private_key=False,
             has_api_creds=False,
+            access_ok=True,
+            access_reason="trial",
+            trial_ends_at=None,
+            subscription_ends_at=None,
+            payment_wallet=None,
         )
+    can_use, reason = _user_can_use_bot(row)
+    trial_ends_at = row.get("trial_ends_at")
+    subscription_ends_at = row.get("subscription_ends_at")
     return ConfigResponse(
         funder_address=row.get("funder_address") or "",
         signature_type=int(row.get("signature_type", 0)),
@@ -394,6 +521,11 @@ def get_config(user: dict = Depends(get_current_user)):
         arbitragem_pct=row.get("arbitragem_pct") and float(row["arbitragem_pct"]) or None,
         has_private_key=bool(row.get("private_key") and str(row.get("private_key", "")).strip() and row.get("private_key") != "0x..."),
         has_api_creds=bool(row.get("api_key") and row.get("api_secret") and row.get("api_passphrase")),
+        access_ok=can_use,
+        access_reason=reason,
+        trial_ends_at=str(trial_ends_at) if trial_ends_at else None,
+        subscription_ends_at=str(subscription_ends_at) if subscription_ends_at else None,
+        payment_wallet=PAYMENT_WALLET if not can_use else None,
     )
 
 
@@ -612,10 +744,21 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     dry_run = req.dry_run or (req.mode == "dry_run")
 
     row = _config_from_supabase(user["id"], user["_token"])
+    if not row:
+        raise HTTPException(
+            status_code=400,
+            detail="Salve suas credenciais Polymarket (chave privada e API) na aba Config antes de iniciar o bot.",
+        )
     if not row.get("private_key") or not row.get("api_key") or not row.get("api_secret") or not row.get("api_passphrase"):
         raise HTTPException(
             status_code=400,
             detail="Salve suas credenciais Polymarket (chave privada e API) na aba Config antes de iniciar o bot.",
+        )
+    can_use, reason = _user_can_use_bot(row)
+    if not can_use:
+        raise HTTPException(
+            status_code=402,
+            detail="Seu acesso ao bot encerrou. Para continuar: envie 100 USDC para a carteira informada na aba Iniciar bot e confirme o pagamento (hash da transação). O acesso será liberado em até 24h após confirmação.",
         )
     markets_list = req.markets if isinstance(req.markets, list) else [s.strip() for s in str(req.markets).split(",") if s.strip()]
     markets_list = [m for m in markets_list if m in ("btc", "eth", "btc15m")]
@@ -951,6 +1094,44 @@ def claim_run_now(user: dict = Depends(get_current_user)):
         )
     result = run_claim(private_key=key, funder_address=funder, signature_type=sig_type)
     return result
+
+
+@app.get("/api/admin/users")
+def admin_list_users(_admin: dict = Depends(require_admin)):
+    """Lista todos os usuários (user_config) para o admin. Só malagueta.canal@gmail.com."""
+    try:
+        rows = _admin_get_all_user_configs()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao listar usuários: {e!s}")
+    return {"users": rows}
+
+
+@app.post("/api/admin/grant-access")
+def admin_grant_access(body: AdminGrantAccessRequest, _admin: dict = Depends(require_admin)):
+    """Libera 30 dias de acesso para um usuário (por user_id ou email). Só admin."""
+    user_id = body.user_id
+    if not user_id and body.email:
+        try:
+            all_rows = _admin_get_all_user_configs()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erro ao buscar usuário: {e!s}")
+        for r in all_rows:
+            if (r.get("email") or "").strip().lower() == (body.email or "").strip().lower():
+                user_id = r.get("user_id")
+                break
+        if not user_id:
+            raise HTTPException(status_code=404, detail="Nenhum usuário encontrado com esse e-mail.")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Informe user_id ou email.")
+    try:
+        _admin_grant_days(user_id, 30)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao liberar acesso: {e!s}")
+    return {"ok": True, "message": "30 dias de acesso liberados.", "user_id": user_id}
 
 
 FRONTEND_DIR = PROJECT_ROOT / "frontend"

@@ -54,6 +54,8 @@ A dashboard usa **Supabase** para login (e-mail + senha) e para guardar a config
 
 4. **Uso:** ao abrir a dashboard, aparece a tela de **Entrar** / **Criar conta**. Após o login, a config é carregada do Supabase; ao salvar, ela é gravada na sua conta. Trades e log ficam separados por usuário (`data/trades_<user_id>.jsonl` e `resultados_<user_id>.txt`).
 
+5. **Trial e assinatura (acesso pago):** execute a migration `supabase/migrations/003_trial_subscription.sql` para adicionar `trial_ends_at` e `subscription_ends_at` em `user_config`. Novos usuários ganham 2 dias grátis; após isso, o bot só inicia se houver assinatura ativa. Para liberar 30 dias manualmente, use a aba **Admin** (visível só para o e-mail configurado como admin). A carteira para recebimento de 100 USDC e a URL/chave do Supabase estão definidas no código (`web.py`).
+
 ## Instalação
 
 ### 1. Python 3.10+
