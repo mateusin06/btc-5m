@@ -44,11 +44,14 @@ MODES = {
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
     "only_hedge_plus": {"min_confidence": 0.70},
+    "odd_master": {},  # Estratégia própria: últimos 10s, price-to-beat dentro de $10, maior odd
 }
 EV_MIN_MARGIN = 0.02
 ARB_MIN_PROFIT_PCT = float(os.getenv("ARB_MIN_PROFIT_PCT", "0.04"))
 ARB_POLL_INTERVAL = 1
 ARB_DEADLINE_T = 10
+ODD_MASTER_LAST_SEC = 10  # Entrar apenas nos últimos 10 segundos
+ODD_MASTER_MAX_DIFF_USD = 10.0  # Price to beat entre 0 e $10 de diferença do preço atual
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -88,6 +91,7 @@ class Config:
     fixed_bet_safe: Optional[float] = None
     arbitragem_bet_pct: Optional[float] = None
     fixed_bet_only_hedge: Optional[float] = None
+    fixed_bet_odd_master: Optional[float] = None
     markets: list[str] = field(default_factory=lambda: ["btc"])
 
 
@@ -317,7 +321,10 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     window_ts = get_window_ts_15m() if is_15m else get_window_ts()
     close_time = window_ts + window_sec
     monitor_secs = (
-        MONITOR_START_T_15M if is_15m else (WINDOW_SEC if active_mode == "arbitragem" else MONITOR_START_T)
+        MONITOR_START_T_15M if is_15m else (
+            ODD_MASTER_LAST_SEC if active_mode == "odd_master" else
+            (WINDOW_SEC if active_mode == "arbitragem" else MONITOR_START_T)
+        )
     )
 
     # Se já passou do prazo para operar nesta janela (ex.: thread reentrou logo após ciclo), usar próxima janela
@@ -369,7 +376,28 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     trade_direction = None
     final_result = None
 
-    while int(time.time()) < close_time - HARD_DEADLINE_T:
+    # Para ODD MASTER: loop até 10s antes do close; para outros modos até 40s antes
+    deadline_sec = ODD_MASTER_LAST_SEC if active_mode == "odd_master" else HARD_DEADLINE_T
+
+    while int(time.time()) < close_time - deadline_sec:
+        # Modo ODD MASTER: últimos 10s, price-to-beat entre 0 e $10 do preço atual, entrar no lado de maior odd
+        if active_mode == "odd_master" and tokens and len(tokens) == 2 and event:
+            from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
+            current_price = get_price_by_market(market)
+            if current_price is not None and window_open is not None:
+                diff_usd = abs(float(current_price) - float(window_open))
+                if 0 <= diff_usd <= ODD_MASTER_MAX_DIFF_USD:
+                    price_up = _get_tok(tokens[0], "BUY") or _get_ev(event, "up")
+                    price_down = _get_tok(tokens[1], "BUY") or _get_ev(event, "down")
+                    if price_up is not None and price_down is not None and 0 < price_up < 1 and 0 < price_down < 1:
+                        fired = True
+                        trade_direction = "up" if price_up >= price_down else "down"
+                        odd = price_up if trade_direction == "up" else price_down
+                        print(f"  [{market.upper()}] ODD MASTER: price-to-beat ${window_open:.2f} vs atual ${current_price:.2f} (diff ${diff_usd:.2f}) | maior odd = {trade_direction.upper()} @ {odd:.2f}", flush=True)
+                        break
+            time.sleep(1)
+            continue
+
         # Modo arbitragem: prioridade para arb pura a cada iteração (Up+Down < 1-margem)
         if active_mode == "arbitragem" and tokens and len(tokens) == 2 and event:
             from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
@@ -495,6 +523,8 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         bet_size = config.fixed_bet_safe
     elif active_mode == "only_hedge_plus":
         bet_size = config.fixed_bet_only_hedge if config.fixed_bet_only_hedge is not None else config.min_bet
+    elif active_mode == "odd_master":
+        bet_size = config.fixed_bet_odd_master if config.fixed_bet_odd_master is not None else config.min_bet
     elif active_mode == "arbitragem" and config.arbitragem_bet_pct is not None:
         bankroll = api_bankroll if api_bankroll is not None else config.bankroll
         bet_size = bankroll * config.arbitragem_bet_pct
@@ -722,9 +752,10 @@ def main():
     global FROZEN_MODE
     parser = argparse.ArgumentParser(description="Polymarket BTC 5-Min Up/Down Bot")
     parser.add_argument("--dry-run", action="store_true", help="Simular sem ordens reais")
-    parser.add_argument("--mode", choices=["safe", "aggressive", "degen", "arbitragem", "only_hedge_plus"], help="Modo de trading")
+    parser.add_argument("--mode", choices=["safe", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master"], help="Modo de trading")
     parser.add_argument("--safe-bet", type=float, metavar="USD", help="Modo safe: valor fixo em USD por entrada")
     parser.add_argument("--only-hedge-bet", type=float, metavar="USD", help="Modo only_hedge_plus: valor fixo em USD por entrada")
+    parser.add_argument("--odd-master-bet", type=float, metavar="USD", help="Modo odd_master: valor fixo em USD por entrada")
     parser.add_argument("--arbitragem-pct", type=float, metavar="PCT", help="Modo arbitragem: %% da banca por entrada (ex: 25)")
     parser.add_argument("--once", action="store_true", help="Apenas um ciclo")
     parser.add_argument("--max-trades", type=int, help="Máximo de trades (dry-run)")
@@ -782,6 +813,35 @@ def main():
         else:
             print("Only Hedge+ exige valor. Use --only-hedge-bet 5.0", flush=True, file=sys.stderr)
             sys.exit(1)
+
+    if config.mode == "odd_master":
+        if args.odd_master_bet is not None:
+            v = args.odd_master_bet
+            if v < config.min_bet:
+                print(f"Erro: --odd-master-bet deve ser >= ${config.min_bet:.2f}", flush=True)
+                sys.exit(1)
+            config.fixed_bet_odd_master = v
+        elif sys.stdin.isatty() and sys.stderr.isatty():
+            while True:
+                try:
+                    print(f"ODD MASTER: valor fixo em USD [min ${config.min_bet:.2f}]: ", end="", flush=True, file=sys.stderr)
+                    s = input().strip()
+                    if not s:
+                        continue
+                    v = float(s.replace(",", "."))
+                    if v < config.min_bet:
+                        continue
+                    config.fixed_bet_odd_master = v
+                    break
+                except ValueError:
+                    pass
+        else:
+            v = float(os.getenv("ODD_MASTER_BET", "0") or "0")
+            if v >= config.min_bet:
+                config.fixed_bet_odd_master = v
+            else:
+                print("ODD MASTER exige valor. Use --odd-master-bet 5.0 ou ODD_MASTER_BET no env.", flush=True, file=sys.stderr)
+                sys.exit(1)
 
     if config.mode == "safe":
         if args.safe_bet is not None:
@@ -847,6 +907,8 @@ def main():
         print(f"Entrada fixa (safe): ${config.fixed_bet_safe:.2f}", flush=True)
     if config.mode == "only_hedge_plus":
         print(f"Only Hedge+: entrada fixa ${config.fixed_bet_only_hedge or config.min_bet:.2f} | só entra com EV+", flush=True)
+    if config.mode == "odd_master":
+        print(f"ODD MASTER: entrada fixa ${config.fixed_bet_odd_master or config.min_bet:.2f} | últimos {ODD_MASTER_LAST_SEC}s, price-to-beat ±${ODD_MASTER_MAX_DIFF_USD:.0f}, maior odd", flush=True)
     if config.mode == "arbitragem" and config.arbitragem_bet_pct is not None:
         print(f"Arbitragem: {config.arbitragem_bet_pct * 100:.0f}% da banca (via API) | Sem oportunidade = aposta normal", flush=True)
     if config.mode == "aggressive":

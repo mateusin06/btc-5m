@@ -320,12 +320,13 @@ class ConfigUpdate(BaseModel):
     api_passphrase: Optional[str] = None
     starting_bankroll: Optional[float] = None
     min_bet: Optional[float] = None
-    bot_mode: Optional[Literal["safe", "aggressive", "degen", "arbitragem", "only_hedge_plus"]] = None
+    bot_mode: Optional[Literal["safe", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master"]] = None
     aggressive_bet_pct: Optional[float] = None
     max_token_price: Optional[float] = None
     arb_min_profit_pct: Optional[float] = None
     safe_bet: Optional[float] = None
     only_hedge_bet: Optional[float] = None
+    odd_master_bet: Optional[float] = None
     arbitragem_pct: Optional[float] = None
 
 
@@ -340,6 +341,7 @@ class ConfigResponse(BaseModel):
     arb_min_profit_pct: float
     safe_bet: Optional[float] = None
     only_hedge_bet: Optional[float] = None
+    odd_master_bet: Optional[float] = None
     arbitragem_pct: Optional[float] = None
     has_private_key: bool
     has_api_creds: bool
@@ -351,11 +353,12 @@ class ConfigResponse(BaseModel):
 
 
 class BotStartRequest(BaseModel):
-    mode: Literal["safe", "aggressive", "dry_run", "arbitragem", "only_hedge_plus"] = Field(..., description="Modo de trading")
+    mode: Literal["safe", "aggressive", "dry_run", "arbitragem", "only_hedge_plus", "odd_master"] = Field(..., description="Modo de trading")
     dry_run: bool = Field(False, description="Se True, simula sem ordens reais")
     markets: List[Literal["btc", "eth", "btc15m"]] = Field(default=["btc"], description="Mercados: btc, eth, btc15m (lista)")
     safe_bet: Optional[float] = None
     only_hedge_bet: Optional[float] = None
+    odd_master_bet: Optional[float] = None
     aggressive_bet_pct: Optional[float] = None
     arbitragem_pct: Optional[float] = None
     stop_win_enabled: bool = Field(False, description="Ativar take profit (parar ao atingir % de lucro)")
@@ -495,6 +498,7 @@ def get_config(user: dict = Depends(get_current_user)):
             arb_min_profit_pct=0.04,
             safe_bet=None,
             only_hedge_bet=None,
+            odd_master_bet=None,
             arbitragem_pct=None,
             has_private_key=False,
             has_api_creds=False,
@@ -518,6 +522,7 @@ def get_config(user: dict = Depends(get_current_user)):
         arb_min_profit_pct=float(row.get("arb_min_profit_pct", 0.04)),
         safe_bet=row.get("safe_bet") and float(row["safe_bet"]) or None,
         only_hedge_bet=row.get("only_hedge_bet") and float(row["only_hedge_bet"]) or None,
+        odd_master_bet=row.get("odd_master_bet") and float(row["odd_master_bet"]) or None,
         arbitragem_pct=row.get("arbitragem_pct") and float(row["arbitragem_pct"]) or None,
         has_private_key=bool(row.get("private_key") and str(row.get("private_key", "")).strip() and row.get("private_key") != "0x..."),
         has_api_creds=bool(row.get("api_key") and row.get("api_secret") and row.get("api_passphrase")),
@@ -561,6 +566,8 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
         data["safe_bet"] = upd.safe_bet
     if upd.only_hedge_bet is not None:
         data["only_hedge_bet"] = upd.only_hedge_bet
+    if upd.odd_master_bet is not None:
+        data["odd_master_bet"] = upd.odd_master_bet
     if upd.arbitragem_pct is not None:
         data["arbitragem_pct"] = int(upd.arbitragem_pct)
     _config_to_supabase(user["id"], user["_token"], data, user.get("email"))
@@ -786,6 +793,13 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
                     status_code=400,
                     detail=f"Only Hedge+ exige valor de aposta (Config ou envio). Mínimo: ${min_bet:.2f}.",
                 )
+        if mode == "odd_master":
+            om_bet = req.odd_master_bet if req.odd_master_bet is not None else (row.get("odd_master_bet") and float(row["odd_master_bet"]))
+            if om_bet is None or om_bet < min_bet:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"ODD MASTER exige valor de aposta (Config ou envio). Mínimo: ${min_bet:.2f}.",
+                )
         if mode == "arbitragem":
             arb_pct = req.arbitragem_pct if req.arbitragem_pct is not None else (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))
             if arb_pct is None or arb_pct < 1 or arb_pct > 100:
@@ -839,6 +853,8 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
             start_config["aggressive_bet_pct"] = int(round(pct_aggressive))
         if mode == "only_hedge_plus" and (req.only_hedge_bet is not None or (row.get("only_hedge_bet") and float(row["only_hedge_bet"]))):
             start_config["only_hedge_bet"] = req.only_hedge_bet if req.only_hedge_bet is not None else float(row["only_hedge_bet"])
+        if mode == "odd_master" and (req.odd_master_bet is not None or (row.get("odd_master_bet") and float(row["odd_master_bet"]))):
+            start_config["odd_master_bet"] = req.odd_master_bet if req.odd_master_bet is not None else float(row["odd_master_bet"])
         if mode == "arbitragem" and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
             start_config["arbitragem_pct"] = int(req.arbitragem_pct if req.arbitragem_pct is not None else float(row["arbitragem_pct"]))
         _config_to_supabase(user_id, user["_token"], start_config, user.get("email"))
@@ -856,6 +872,10 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         bet = req.only_hedge_bet if req.only_hedge_bet is not None else row.get("only_hedge_bet")
         if bet is not None:
             cmd.extend(["--only-hedge-bet", str(bet)])
+    if mode == "odd_master":
+        bet = req.odd_master_bet if req.odd_master_bet is not None else row.get("odd_master_bet")
+        if bet is not None:
+            cmd.extend(["--odd-master-bet", str(bet)])
     if mode == "arbitragem":
         pct = req.arbitragem_pct if req.arbitragem_pct is not None else row.get("arbitragem_pct")
         if pct is not None:
@@ -874,6 +894,9 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         elif mode == "only_hedge_plus" and (req.only_hedge_bet is not None or (row.get("only_hedge_bet") and float(row["only_hedge_bet"]))):
             bet = req.only_hedge_bet if req.only_hedge_bet is not None else float(row["only_hedge_bet"])
             extra = f" only_hedge_bet=${bet:.2f}"
+        elif mode == "odd_master" and (req.odd_master_bet is not None or (row.get("odd_master_bet") and float(row["odd_master_bet"]))):
+            bet = req.odd_master_bet if req.odd_master_bet is not None else float(row["odd_master_bet"])
+            extra = f" odd_master_bet=${bet:.2f}"
         elif mode == "arbitragem" and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
             pct = req.arbitragem_pct if req.arbitragem_pct is not None else float(row["arbitragem_pct"])
             extra = f" arbitragem_pct={int(round(pct * 100))}%"
