@@ -3,14 +3,16 @@
 Setup de credenciais Polymarket - Deriva API keys da chave privada.
 
 Execute uma vez para obter POLY_API_KEY, POLY_API_SECRET e POLY_API_PASSPHRASE.
-Cole os valores no seu arquivo .env.
+Cole os valores no ambiente (export no terminal ou config do servidor) ou no arquivo .env se usar.
 """
 
 import os
 import sys
 from dotenv import load_dotenv
 
-load_dotenv()
+# Carrega .env apenas se o arquivo existir (config pode ser só por variáveis de ambiente)
+if os.path.exists(os.path.join(os.path.dirname(__file__) or ".", ".env")):
+    load_dotenv()
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137  # Polygon
@@ -19,7 +21,7 @@ CHAIN_ID = 137  # Polygon
 def main() -> None:
     private_key = os.getenv("POLY_PRIVATE_KEY", "").strip()
     if not private_key or private_key == "0x...":
-        print("ERRO: Defina POLY_PRIVATE_KEY no .env com sua chave privada.")
+        print("ERRO: Defina POLY_PRIVATE_KEY (variável de ambiente) com sua chave privada.")
         print("Exemplo: POLY_PRIVATE_KEY=0x1234...")
         sys.exit(1)
 
@@ -48,7 +50,7 @@ def main() -> None:
         sys.exit(1)
 
     print("\n" + "=" * 60)
-    print("Adicione estas linhas ao seu arquivo .env:")
+    print("Defina estas variáveis de ambiente (ou adicione ao seu ambiente antes de rodar o bot):")
     print("=" * 60)
     print(f"POLY_API_KEY={creds.api_key}")
     print(f"POLY_API_SECRET={creds.api_secret}")

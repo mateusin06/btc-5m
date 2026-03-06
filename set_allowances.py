@@ -5,13 +5,15 @@ Configura allowances (permissões) para MetaMask/EOA operar via API na Polymarke
 Usuários de MetaMask precisam rodar este script UMA VEZ antes de usar o bot via API.
 O depósito no site da Polymarket não configura os contratos que a API usa.
 
-Requer: POLY_PRIVATE_KEY no .env e um pouco de MATIC/POL na carteira para gas.
+Requer: POLY_PRIVATE_KEY (variável de ambiente) e um pouco de MATIC/POL na carteira para gas.
 """
 
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Carrega .env apenas se existir (config pode ser só por variáveis de ambiente)
+if os.path.exists(os.path.join(os.path.dirname(__file__) or ".", ".env")):
+    load_dotenv()
 
 RPC_URL = os.getenv("POLYGON_RPC_URL", "https://polygon.drpc.org")
 CHAIN_ID = 137
@@ -124,7 +126,7 @@ def run_set_allowances(
 def main():
     key = (os.getenv("POLY_PRIVATE_KEY") or "").strip()
     if not key or key == "0x...":
-        print("ERRO: Defina POLY_PRIVATE_KEY no .env")
+        print("ERRO: Defina POLY_PRIVATE_KEY (variável de ambiente)")
         return 1
 
     ok, msg, details = run_set_allowances(key)

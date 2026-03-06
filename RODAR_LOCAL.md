@@ -105,7 +105,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Editar o `.env` (SUPABASE_URL e SUPABASE_ANON_KEY), depois:
+Defina `SUPABASE_URL` e `SUPABASE_ANON_KEY` (variáveis de ambiente ou arquivo `.env`, se usar). Depois:
 
 ```powershell
 python web.py
@@ -129,7 +129,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Configure o `.env` e depois:
+Defina `SUPABASE_URL` e `SUPABASE_ANON_KEY` (variáveis de ambiente ou .env). Depois:
 
 ```bash
 python web.py

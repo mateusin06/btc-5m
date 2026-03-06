@@ -17,7 +17,9 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Carrega .env apenas se existir (config pode ser só por variáveis de ambiente)
+if os.path.exists(os.path.join(os.path.dirname(__file__) or ".", ".env")):
+    load_dotenv()
 
 POLYMARKET_URL = "https://polymarket.com"
 

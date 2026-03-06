@@ -14,7 +14,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Não sobrescrever POLY_* que a dashboard passou ao iniciar o processo (credenciais do Supabase)
-load_dotenv(override=False)
+# Carrega .env apenas se o arquivo existir (config principal é por variáveis de ambiente / dashboard)
+if os.path.exists(os.path.join(os.path.dirname(__file__) or ".", ".env")):
+    load_dotenv(override=False)
 
 # Intervalo entre execuções (segundos)
 CLAIM_INTERVAL_SEC = int(os.getenv("CLAIM_INTERVAL_SEC", "60"))

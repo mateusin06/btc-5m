@@ -3,10 +3,10 @@
 Script de diagnóstico: verifica saldo e allowance na API Polymarket.
 Use para debugar "not enough balance / allowance".
 
-Uso: defina as variáveis no .env e rode:
+Uso: defina as variáveis de ambiente e rode:
   python check_balance.py
 
-Ou passe as env vars:
+Exemplo:
   POLY_PRIVATE_KEY=0x... POLY_FUNDER_ADDRESS=0x... POLY_SIGNATURE_TYPE=2 python check_balance.py
 """
 
@@ -14,10 +14,9 @@ import os
 import sys
 from pathlib import Path
 
-# Carrega .env do projeto
-Path(__file__).resolve().parent
-from dotenv import load_dotenv
-load_dotenv()
+# Carrega .env apenas se existir (config pode ser só por variáveis de ambiente)
+if os.path.exists(os.path.join(os.path.dirname(__file__) or ".", ".env")):
+    load_dotenv()
 
 def main():
     key = os.getenv("POLY_PRIVATE_KEY", "").strip()
@@ -34,7 +33,7 @@ def main():
     print()
 
     if not key or not api_key or not api_secret or not api_pass:
-        print("ERRO: Defina POLY_PRIVATE_KEY, POLY_API_KEY, POLY_API_SECRET, POLY_API_PASSPHRASE no .env")
+        print("ERRO: Defina POLY_PRIVATE_KEY, POLY_API_KEY, POLY_API_SECRET, POLY_API_PASSPHRASE (variáveis de ambiente)")
         return 1
 
     try:

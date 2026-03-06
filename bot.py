@@ -17,7 +17,8 @@ from typing import Optional
 from dotenv import load_dotenv
 
 # Não sobrescrever variáveis já definidas (ex.: BOT_MODE passado pela web ao iniciar)
-load_dotenv(override=False)
+if os.path.exists(os.path.join(os.path.dirname(__file__) or ".", ".env")):
+    load_dotenv(override=False)
 
 
 def _parse_markets() -> list[str]:
@@ -37,14 +38,15 @@ def _parse_markets() -> list[str]:
         return ["btc"]
     return []
 
-# Configurações de modos
+# Configurações de modos (confiança mínima mais assertiva para reduzir entradas ruins de dia)
 MODES = {
-    "safe": {"min_confidence": 0.70},
-    "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.55},
+    "safe": {"min_confidence": 0.72},
+    "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.58},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
-    "only_hedge_plus": {"min_confidence": 0.70},
+    "only_hedge_plus": {"min_confidence": 0.72},
     "odd_master": {},  # Estratégia própria: últimos 10s, price-to-beat dentro de $10, maior odd
+    "90_95": {},       # Últimos 10s, entra no lado de maior odd só se a odd estiver entre 90c e 95c; aposta fixa
 }
 EV_MIN_MARGIN = 0.02
 ARB_MIN_PROFIT_PCT = float(os.getenv("ARB_MIN_PROFIT_PCT", "0.04"))
@@ -52,6 +54,9 @@ ARB_POLL_INTERVAL = 1
 ARB_DEADLINE_T = 10
 ODD_MASTER_LAST_SEC = 10  # Entrar apenas nos últimos 10 segundos
 ODD_MASTER_MAX_DIFF_USD = 10.0  # Price to beat entre 0 e $10 de diferença do preço atual
+MODE_90_95_LAST_SEC = 10   # 90-95: últimos 10s
+MODE_90_95_MIN_ODD = 0.90  # 90-95: odd mínima (90c)
+MODE_90_95_MAX_ODD = 0.95  # 90-95: odd máxima (95c)
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -62,15 +67,18 @@ MONITOR_START_T_15M = 300
 HARD_DEADLINE_T = 40
 MIN_SECS_TO_ENTER = 40
 TA_POLL_INTERVAL = 2
-SPIKE_THRESHOLD = 2.0  # Salto mínimo de score para disparar por spike (mais assertivo que 1.5)
-SPIKE_MIN_CONFIDENCE = 0.40  # Spike só dispara se confiança >= 40% (evita ruído)
-T5S_MIN_CONFIDENCE = 0.35  # T-5s só dispara se melhor sinal tiver confiança >= 35%
+SPIKE_THRESHOLD = 2.5   # Salto mínimo de score para spike (mais assertivo; evita ruído de dia)
+SPIKE_MIN_CONFIDENCE = 0.48  # Spike só dispara se confiança >= 48%
+T5S_MIN_CONFIDENCE = 0.40   # T-5s só dispara se melhor sinal tiver confiança >= 40%
 ORDER_RETRY_INTERVAL = 3
 ORDER_MAX_FOK_RETRIES = 5  # Limite de retentativas FOK para não bloquear outros mercados (ex: ETH)
 MIN_SHARES = 5
 POLY_MIN_ORDER_USD = 1.0  # Polymarket exige mínimo $1 por ordem (marketable BUY)
 LIMIT_FALLBACK_PRICE = 0.95
 MAX_TOKEN_PRICE = float(os.getenv("MAX_TOKEN_PRICE", "0.98"))
+# Resolução é por Chainlink: usar Price to Beat (abertura Chainlink) alinha TA ao resultado
+USE_CHAINLINK_OPEN = (os.getenv("USE_CHAINLINK_OPEN", "1").strip().lower() in ("1", "true", "yes"))
+MAX_DELTA_OPEN_USD = float(os.getenv("MAX_DELTA_OPEN_USD", "0"))  # 0 = não filtrar; >0 = pular se |delta Binance-Chainlink| > valor
 
 # Última janela em que apostamos por mercado (evita repetir no mesmo mercado na mesma janela)
 _last_bet_window_by_market: dict[str, int] = {}
@@ -92,6 +100,7 @@ class Config:
     arbitragem_bet_pct: Optional[float] = None
     fixed_bet_only_hedge: Optional[float] = None
     fixed_bet_odd_master: Optional[float] = None
+    fixed_bet_90_95: Optional[float] = None
     markets: list[str] = field(default_factory=lambda: ["btc"])
 
 
@@ -212,13 +221,13 @@ def create_clob_client():
     api_pass = os.getenv("POLY_API_PASSPHRASE", "").strip()
 
     if not key or key == "0x...":
-        raise ValueError("Defina POLY_PRIVATE_KEY no .env")
+        raise ValueError("Defina POLY_PRIVATE_KEY (variável de ambiente ou config na dashboard)")
     try:
         key = _normalize_private_key(key)
     except ValueError as e:
         raise ValueError(str(e))
     if not key:
-        raise ValueError("Defina POLY_PRIVATE_KEY no .env")
+        raise ValueError("Defina POLY_PRIVATE_KEY (variável de ambiente ou config na dashboard)")
     if not api_key or not api_secret or not api_pass:
         raise ValueError("Defina POLY_API_KEY, POLY_API_SECRET e POLY_API_PASSPHRASE")
 
@@ -337,7 +346,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     active_mode: modo fixado no arranque (evita mistura safe/aggressive); se None, usa FROZEN_MODE ou config.mode.
     """
     global _last_bet_window_by_market
-    from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market, get_btc_candles_1m
+    from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market, get_btc_candles_1m, get_price_to_beat, get_open_delta_binance_chainlink
     from strategy import analyze
 
     # Fonte única de verdade: SEMPRE usar FROZEN_MODE quando estiver definido (evita 2 compras com modos diferentes)
@@ -397,6 +406,20 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     event = get_market_by_slug(slug)
     tokens = extract_token_ids(event) if event else None
 
+    # Delta Binance vs Chainlink: resolução é por Chainlink; usar Price to Beat alinha TA ao resultado
+    delta_info = get_open_delta_binance_chainlink(slug, market, window_ts, is_15m)
+    if delta_info and USE_CHAINLINK_OPEN and delta_info.get("chainlink_open") is not None:
+        window_open = delta_info["chainlink_open"]
+        d_usd = delta_info.get("delta_usd", 0)
+        d_pct = delta_info.get("delta_pct", 0)
+        print(f"  [{market.upper()}] Abertura Chainlink (Price to Beat) ${window_open:.2f} | delta Binance–Chainlink: ${d_usd:+.2f} ({d_pct:+.3f}%)", flush=True)
+        if MAX_DELTA_OPEN_USD > 0 and abs(d_usd) > MAX_DELTA_OPEN_USD:
+            print(f"  [{market.upper()}] Delta |${d_usd:.2f}| > {MAX_DELTA_OPEN_USD:.0f} USD, pulando janela.", flush=True)
+            return False
+    elif delta_info and not USE_CHAINLINK_OPEN:
+        d_usd = delta_info.get("delta_usd", 0)
+        print(f"  [{market.upper()}] Abertura Binance ${window_open:.2f} | delta Binance–Chainlink: ${d_usd:+.2f} (Chainlink não usado)", flush=True)
+
     tick_prices = []
     best_score = 0.0
     best_result = None
@@ -405,8 +428,8 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     trade_direction = None
     final_result = None
 
-    # Para ODD MASTER: loop até 10s antes do close; para outros modos até 40s antes
-    deadline_sec = ODD_MASTER_LAST_SEC if active_mode == "odd_master" else HARD_DEADLINE_T
+    # Para ODD MASTER e 90-95: loop até 10s antes do close; para outros modos até 40s antes
+    deadline_sec = ODD_MASTER_LAST_SEC if active_mode == "odd_master" else (MODE_90_95_LAST_SEC if active_mode == "90_95" else HARD_DEADLINE_T)
 
     while int(time.time()) < close_time - deadline_sec:
         # Modo ODD MASTER: últimos 10s, price-to-beat entre 0 e $10 do preço atual, entrar no lado de maior odd
@@ -423,6 +446,29 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                         trade_direction = "up" if price_up >= price_down else "down"
                         odd = price_up if trade_direction == "up" else price_down
                         print(f"  [{market.upper()}] ODD MASTER: price-to-beat ${window_open:.2f} vs atual ${current_price:.2f} (diff ${diff_usd:.2f}) | maior odd = {trade_direction.upper()} @ {odd:.2f}", flush=True)
+                        break
+            time.sleep(1)
+            continue
+
+        # Modo 90-95: últimos 10s, entra no lado de maior odd só se a odd estiver entre 90c e 95c
+        if active_mode == "90_95" and tokens and len(tokens) == 2 and event:
+            from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
+            price_up = _get_tok(tokens[0], "BUY") or _get_ev(event, "up")
+            price_down = _get_tok(tokens[1], "BUY") or _get_ev(event, "down")
+            if price_up is not None and price_down is not None and 0 < price_up < 1 and 0 < price_down < 1:
+                if price_up >= price_down:
+                    odd = price_up
+                    if MODE_90_95_MIN_ODD <= odd <= MODE_90_95_MAX_ODD:
+                        fired = True
+                        trade_direction = "up"
+                        print(f"  [{market.upper()}] 90-95: maior odd = UP @ {odd:.2f} (entre 90–95c)", flush=True)
+                        break
+                else:
+                    odd = price_down
+                    if MODE_90_95_MIN_ODD <= odd <= MODE_90_95_MAX_ODD:
+                        fired = True
+                        trade_direction = "down"
+                        print(f"  [{market.upper()}] 90-95: maior odd = DOWN @ {odd:.2f} (entre 90–95c)", flush=True)
                         break
             time.sleep(1)
             continue
@@ -554,6 +600,8 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         bet_size = config.fixed_bet_only_hedge if config.fixed_bet_only_hedge is not None else config.min_bet
     elif active_mode == "odd_master":
         bet_size = config.fixed_bet_odd_master if config.fixed_bet_odd_master is not None else config.min_bet
+    elif active_mode == "90_95":
+        bet_size = config.fixed_bet_90_95 if config.fixed_bet_90_95 is not None else config.min_bet
     elif active_mode == "arbitragem" and config.arbitragem_bet_pct is not None:
         bankroll = api_bankroll if api_bankroll is not None else config.bankroll
         bet_size = bankroll * config.arbitragem_bet_pct
@@ -781,10 +829,11 @@ def main():
     global FROZEN_MODE
     parser = argparse.ArgumentParser(description="Polymarket BTC 5-Min Up/Down Bot")
     parser.add_argument("--dry-run", action="store_true", help="Simular sem ordens reais")
-    parser.add_argument("--mode", choices=["safe", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master"], help="Modo de trading")
+    parser.add_argument("--mode", choices=["safe", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master", "90_95"], help="Modo de trading")
     parser.add_argument("--safe-bet", type=float, metavar="USD", help="Modo safe: valor fixo em USD por entrada")
     parser.add_argument("--only-hedge-bet", type=float, metavar="USD", help="Modo only_hedge_plus: valor fixo em USD por entrada")
     parser.add_argument("--odd-master-bet", type=float, metavar="USD", help="Modo odd_master: valor fixo em USD por entrada")
+    parser.add_argument("--bet-90-95", type=float, metavar="USD", help="Modo 90-95: valor fixo em USD por entrada (últimos 10s, odd entre 90c e 95c)")
     parser.add_argument("--arbitragem-pct", type=float, metavar="PCT", help="Modo arbitragem: %% da banca por entrada (ex: 25)")
     parser.add_argument("--once", action="store_true", help="Apenas um ciclo")
     parser.add_argument("--max-trades", type=int, help="Máximo de trades (dry-run)")
@@ -872,6 +921,35 @@ def main():
                 print("ODD MASTER exige valor. Use --odd-master-bet 5.0 ou ODD_MASTER_BET no env.", flush=True, file=sys.stderr)
                 sys.exit(1)
 
+    if config.mode == "90_95":
+        if args.bet_90_95 is not None:
+            v = args.bet_90_95
+            if v < config.min_bet:
+                print(f"Erro: --bet-90-95 deve ser >= ${config.min_bet:.2f}", flush=True)
+                sys.exit(1)
+            config.fixed_bet_90_95 = v
+        elif sys.stdin.isatty() and sys.stderr.isatty():
+            while True:
+                try:
+                    print(f"90-95: valor fixo em USD [min ${config.min_bet:.2f}]: ", end="", flush=True, file=sys.stderr)
+                    s = input().strip()
+                    if not s:
+                        continue
+                    v = float(s.replace(",", "."))
+                    if v < config.min_bet:
+                        continue
+                    config.fixed_bet_90_95 = v
+                    break
+                except ValueError:
+                    pass
+        else:
+            v = float(os.getenv("BET_90_95", "0") or "0")
+            if v >= config.min_bet:
+                config.fixed_bet_90_95 = v
+            else:
+                print("90-95 exige valor. Use --bet-90-95 5.0 ou BET_90_95 no env.", flush=True, file=sys.stderr)
+                sys.exit(1)
+
     if config.mode == "safe":
         if args.safe_bet is not None:
             v = args.safe_bet
@@ -938,6 +1016,8 @@ def main():
         print(f"Only Hedge+: entrada fixa ${config.fixed_bet_only_hedge or config.min_bet:.2f} | só entra com EV+", flush=True)
     if config.mode == "odd_master":
         print(f"ODD MASTER: entrada fixa ${config.fixed_bet_odd_master or config.min_bet:.2f} | últimos {ODD_MASTER_LAST_SEC}s, price-to-beat ±${ODD_MASTER_MAX_DIFF_USD:.0f}, maior odd", flush=True)
+    if config.mode == "90_95":
+        print(f"90-95: entrada fixa ${config.fixed_bet_90_95 or config.min_bet:.2f} | últimos {MODE_90_95_LAST_SEC}s, maior odd entre {MODE_90_95_MIN_ODD:.0%} e {MODE_90_95_MAX_ODD:.0%}", flush=True)
     if config.mode == "arbitragem" and config.arbitragem_bet_pct is not None:
         print(f"Arbitragem: {config.arbitragem_bet_pct * 100:.0f}% da banca (via API) | Sem oportunidade = aposta normal", flush=True)
     if config.mode == "aggressive":

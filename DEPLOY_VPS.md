@@ -12,7 +12,7 @@ Guia passo a passo para rodar o **dashboard e o bot Polymarket** em um VPS Ubunt
 | 2 | Instalar Python, pip, venv, git, nginx (e opcionalmente Python 3.12) |
 | 3 | Clonar o repositório do projeto |
 | 4 | Criar ambiente virtual (venv) e instalar dependências |
-| 5 | Criar o arquivo `.env` com as chaves do Supabase |
+| 5 | Definir variáveis de ambiente do Supabase (SUPABASE_URL, SUPABASE_ANON_KEY) — .env é opcional |
 | 6 | Testar o dashboard na mão (uvicorn) |
 | 7 | Configurar o serviço systemd para rodar 24/7 |
 | 8 | Configurar o Nginx (site + proxy da API) e opcionalmente HTTPS |
@@ -129,31 +129,36 @@ Mantenha o terminal com `source venv/bin/activate` ativo nos próximos passos (o
 
 ---
 
-## Passo 5: Arquivo `.env` no servidor
+## Passo 5: Variáveis de ambiente do Supabase
 
-O `.env` na VPS é usado pelo **servidor** (dashboard). As credenciais da Polymarket de cada usuário ficam no **Supabase** (cada um preenche na aba Config após o login).
+O servidor (dashboard) precisa de `SUPABASE_URL` e `SUPABASE_ANON_KEY`. Você pode defini-las de duas formas:
 
-**Importante:** o arquivo `.env` deve ficar **dentro da pasta do projeto** (`/root/BOT_Polymarket`), pois o uvicorn carrega as variáveis a partir dali. Você já está nessa pasta após o Passo 3.
+**Opção A — Variáveis no processo:** ao iniciar o uvicorn (ou no serviço systemd), exporte:
+```bash
+export SUPABASE_URL=https://seu-projeto.supabase.co
+export SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+uvicorn web:app --host 0.0.0.0 --port 8000
+```
 
-Crie o arquivo:
+**Opção B — Arquivo .env (opcional):** se preferir, crie `.env` na pasta do projeto (`/root/BOT_Polymarket`):
 
 ```bash
 nano .env
 ```
 
-Coloque **apenas** o que o dashboard precisa (Supabase). Exemplo:
+Conteúdo de exemplo:
 
 ```env
 SUPABASE_URL=https://seu-projeto.supabase.co
 SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-- **SUPABASE_URL** — em Supabase: **Settings** (ícone de engrenagem) → **API** → "Project URL".
-- **SUPABASE_ANON_KEY** — chave “anon” pública do mesmo projeto.
+- **SUPABASE_URL** — em Supabase: **Settings** → **API** → "Project URL".
+- **SUPABASE_ANON_KEY** — chave “anon” pública do projeto.
 
-Salve: `Ctrl+O`, Enter, depois `Ctrl+X`.
+Salve: `Ctrl+O`, Enter, depois `Ctrl+X`. O `web.py` carrega o `.env` apenas se o arquivo existir.
 
-Não é obrigatório colocar `POLY_*` no `.env` do servidor; cada usuário configura as próprias chaves no site.
+As credenciais da Polymarket (POLY_*) ficam no **Supabase** por usuário; a dashboard passa essas variáveis ao iniciar o bot — não é preciso colocá-las no .env do servidor.
 
 ---
 
@@ -334,7 +339,7 @@ python3.12 -m venv venv   # ou: python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
-nano .env   # SUPABASE_URL e SUPABASE_ANON_KEY
+nano .env   # ou defina SUPABASE_URL e SUPABASE_ANON_KEY no serviço systemd / export
 nano /etc/systemd/system/polymarket-bot.service   # conteúdo do Passo 7
 systemctl daemon-reload && systemctl enable --now polymarket-bot
 nano /etc/nginx/sites-available/polymarket        # conteúdo do Passo 8.1
@@ -350,6 +355,6 @@ nginx -t && systemctl reload nginx
 
 - **502 Bad Gateway** — O uvicorn não está rodando. Confira `systemctl status polymarket-bot` e `journalctl -u polymarket-bot -n 50`.
 - **Página em branco** — Verifique se o caminho do `root` no Nginx aponta para `/root/BOT_Polymarket/frontend` e se existe o arquivo `index.html` dentro dessa pasta.
-- **Erro de login / Supabase** — Confira `SUPABASE_URL` e `SUPABASE_ANON_KEY` no `.env` (dentro da pasta do projeto). A URL é a "Project URL" e a chave é a "anon" em **Supabase → Settings → API**. Verifique também se o projeto está ativo e se você executou as migrations (SQL) para criar a tabela `user_config` e as políticas RLS.
+- **Erro de login / Supabase** — Confira `SUPABASE_URL` e `SUPABASE_ANON_KEY` (variáveis de ambiente ou arquivo .env, se usar). A URL é a "Project URL" e a chave é a "anon" em **Supabase → Settings → API**. Verifique também se o projeto está ativo e se você executou as migrations (SQL) para criar a tabela `user_config` e as políticas RLS.
 - **Bot não inicia** — Cada usuário precisa salvar chave privada e API na aba Config do dashboard. Veja os logs do serviço: `journalctl -u polymarket-bot -f`.
-- **Onde fica a pasta do projeto?** — Se você clonou em `/root/BOT_Polymarket`, é essa. O `.env` e o `venv` devem estar dentro dela.
+- **Onde fica a pasta do projeto?** — Se você clonou em `/root/BOT_Polymarket`, é essa. O venv fica dentro dela; variáveis de ambiente (ou .env, se usar) são carregadas pelo processo que inicia o servidor.

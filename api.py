@@ -186,7 +186,7 @@ def get_window_resolution_polymarket(slug: str) -> Optional[bool]:
 def get_price_to_beat(slug: str) -> Optional[float]:
     """
     Preço de abertura da janela (Price to Beat) da Polymarket/Chainlink.
-    Para a *próxima* janela, esse valor é o preço de *fechamento* da janela anterior.
+    É o preço usado na resolução: Up se fechamento Chainlink >= este valor.
     Returns: preço float ou None se ainda não disponível/erro.
     """
     try:
@@ -200,6 +200,44 @@ def get_price_to_beat(slug: str) -> Optional[float]:
         return float(ptb)
     except (TypeError, ValueError, KeyError):
         return None
+
+
+def get_window_open_binance(market: str, window_ts: int, is_15m: bool = False) -> Optional[float]:
+    """
+    Preço de abertura da janela via Binance (primeiro candle da janela).
+    Útil para comparar com Chainlink (get_price_to_beat) e obter delta.
+    """
+    if market == "eth":
+        candles = get_eth_candles_1m(limit=15)
+    else:
+        candles = get_btc_candles_1m(limit=15) if not is_15m else get_btc_candles_15m(limit=5)
+    if not candles:
+        return None
+    for c in candles:
+        candle_start_sec = c["t"] // 1000
+        if candle_start_sec == window_ts:
+            return float(c["o"])
+    return float(candles[0]["o"]) if candles else None
+
+
+def get_open_delta_binance_chainlink(slug: str, market: str, window_ts: int, is_15m: bool = False) -> Optional[dict]:
+    """
+    Delta entre abertura Binance e Chainlink (Price to Beat).
+    Resolução é por Chainlink; usar Chainlink como referência alinha a estratégia ao resultado.
+    Returns: {"chainlink_open", "binance_open", "delta_usd", "delta_pct"} ou None.
+    """
+    chainlink_open = get_price_to_beat(slug)
+    binance_open = get_window_open_binance(market, window_ts, is_15m)
+    if chainlink_open is None or binance_open is None:
+        return None
+    delta_usd = binance_open - chainlink_open
+    delta_pct = (delta_usd / chainlink_open) * 100 if chainlink_open else 0.0
+    return {
+        "chainlink_open": chainlink_open,
+        "binance_open": binance_open,
+        "delta_usd": delta_usd,
+        "delta_pct": delta_pct,
+    }
 
 
 def get_market_by_slug(slug: str) -> Optional[dict]:

@@ -14,14 +14,14 @@ Uso no bot:
 from dataclasses import dataclass
 from typing import Optional
 
-# Pesos dos indicadores (window delta domina)
+# Pesos dos indicadores (window delta domina; menos peso em sinais ruidosos de dia)
 WEIGHT_WINDOW_DELTA = 7
-WEIGHT_MICRO_MOMENTUM = 2
-WEIGHT_ACCELERATION = 1.5
-WEIGHT_EMA_CROSS = 1
+WEIGHT_MICRO_MOMENTUM = 1.5   # Reduzido: últimos 2 candles muito voláteis de dia
+WEIGHT_ACCELERATION = 1.2     # Reduzido: aceleração intrabar é ruidosa
+WEIGHT_EMA_CROSS = 1.2        # Mantido: tendência de curto prazo
 WEIGHT_RSI = 2
-WEIGHT_VOLUME_SURGE = 1
-WEIGHT_TICK_TREND = 2
+WEIGHT_VOLUME_SURGE = 1.2     # Só conta surtos mais fortes (limiar 2x)
+WEIGHT_TICK_TREND = 1.2       # Reduzido: tick em tempo real muito ruidoso de dia
 
 
 # Normalização: confiança e P(Up) usam score em [-MAX_SCORE, +MAX_SCORE]
@@ -75,7 +75,7 @@ def _rsi(prices: list[float], period: int = 14) -> float:
 
 
 def _window_delta_weight(delta_pct: float) -> float:
-    """Peso do window delta baseado na magnitude."""
+    """Peso do window delta baseado na magnitude (mais assertivo: ignora micro-ruído)."""
     abs_d = abs(delta_pct)
     if abs_d >= 0.10:
         return 7
@@ -83,17 +83,17 @@ def _window_delta_weight(delta_pct: float) -> float:
         return 5
     if abs_d >= 0.005:
         return 3
-    if abs_d >= 0.001:
+    if abs_d >= 0.002:   # antes 0.001: evita peso 1 em oscilações mínimas de dia
         return 1
     return 0
 
 
 def _rsi_weight(rsi: float) -> float:
-    """Peso RSI: extremos overbought/oversold."""
-    if rsi >= 75:
-        return -2  # Overbought = bearish
-    if rsi <= 25:
-        return 2  # Oversold = bullish
+    """Peso RSI: só extremos fortes (menos falsos de dia)."""
+    if rsi >= 80:
+        return -2   # Overbought forte = bearish
+    if rsi <= 20:
+        return 2    # Oversold forte = bullish
     return 0
 
 
@@ -173,24 +173,24 @@ def analyze(
         details["rsi"] = rsi
         details["rsi_weight"] = rsi_w
 
-    # 6. Volume Surge
+    # 6. Volume Surge (mais assertivo: só surtos claros, 2x volume)
     if len(volumes) >= 6:
         recent_avg = sum(volumes[-3:]) / 3
         prior_avg = sum(volumes[-6:-3]) / 3
-        if prior_avg > 0 and recent_avg >= 1.5 * prior_avg:
+        if prior_avg > 0 and recent_avg >= 2.0 * prior_avg:
             surge_dir = 1 if prices[-1] > prices[-2] else -1
             score += surge_dir * WEIGHT_VOLUME_SURGE
             details["volume_surge"] = surge_dir
 
-    # 7. Real-Time Tick Trend (60%+ consistência direcional, >0.005% movimento)
+    # 7. Real-Time Tick Trend (mais assertivo: movimento e consistência maiores)
     if tick_prices and len(tick_prices) >= 5:
         first = tick_prices[0]
         last = tick_prices[-1]
         move_pct = (last - first) / first * 100
         ups = sum(1 for i in range(1, len(tick_prices)) if tick_prices[i] > tick_prices[i - 1])
         consistency = ups / (len(tick_prices) - 1) if len(tick_prices) > 1 else 0.5
-        if abs(move_pct) >= 0.005 and (consistency >= 0.6 or consistency <= 0.4):
-            tick_dir = 1 if consistency >= 0.6 else -1
+        if abs(move_pct) >= 0.008 and (consistency >= 0.65 or consistency <= 0.35):
+            tick_dir = 1 if consistency >= 0.65 else -1
             score += tick_dir * WEIGHT_TICK_TREND
             details["tick_trend"] = tick_dir
 

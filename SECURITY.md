@@ -50,7 +50,7 @@ Foi feita uma análise de segurança no backend (FastAPI), frontend, bot e integ
 
 ### 1. **Secrets e variáveis de ambiente**
 - **Não** commitar `SUPABASE_ANON_KEY` ou `SUPABASE_URL` com valores reais no código. Usar apenas variáveis de ambiente (ex.: na Vercel) e remover defaults sensíveis em `web.py` se o repositório for público.
-- Manter `.env` no `.gitignore` e nunca enviar chaves privadas ou API keys para o repositório.
+- Manter `.env` no `.gitignore` se usar esse arquivo; nunca commitar chaves privadas ou API keys. A config em produção pode ser só por variáveis de ambiente (dashboard passa as credenciais ao iniciar o bot).
 
 ### 2. **CORS**
 - Hoje: `allow_origins=["*"]` com `allow_credentials=True`. Em produção, definir origens explícitas, por exemplo:

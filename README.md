@@ -35,12 +35,12 @@ Acesse **http://localhost:8000** no navegador.
 
 ### O que a dashboard faz
 
-- **Config & API:** colar a chave privada e o Funder Address, clicar em **Gerar API** (usa a mesma lógica do `setup_creds.py`) e copiar/salvar as credenciais no `.env`. Também é possível ajustar bankroll, aposta mínima, aposta Safe (USD), % Agressivo, % Arbitragem, preço máximo do token e lucro mínimo da arb.
+- **Config & API:** colar a chave privada e o Funder Address, clicar em **Gerar API** (usa a mesma lógica do `setup_creds.py`) e salvar a config no Supabase. Ao iniciar o bot, a dashboard passa todas as variáveis por ambiente (não usa arquivo .env). Também é possível ajustar bankroll, aposta mínima, aposta Safe (USD), % Agressivo, % Arbitragem, preço máximo do token e lucro mínimo da arb.
 - **Iniciar bot:** escolher modo (Safe, Agressivo, Dry run, Arbitragem), informar valor ou % conforme o modo, e clicar em **Iniciar** ou **Parar**. O bot roda em subprocesso e a saída vai para `resultados.txt`.
 - **Estatísticas:** ver totais de trades, vitórias, derrotas, arbs, PnL e win rate para os últimos 24h, 7d ou 30d (dados em `data/trades.jsonl`, preenchido pelo bot a cada trade).
 - **Log:** últimas linhas de `resultados.txt`.
 
-O modo **agressivo** usa o % configurado no .env (`AGGRESSIVE_BET_PCT`, ex: 25). Safe e arbitragem podem ser definidos ao iniciar pela dashboard ou salvos na config.
+O modo **agressivo** usa o % salvo na config do usuário (`AGGRESSIVE_BET_PCT`, ex: 25). Safe e arbitragem podem ser definidos ao iniciar pela dashboard ou salvos na config.
 
 ### Login e config por usuário (Supabase)
 
@@ -50,7 +50,7 @@ A dashboard usa **Supabase** para login (e-mail + senha) e para guardar a config
 
 2. **Auth por e-mail:** em **Authentication > Providers**, certifique-se de que **Email** está habilitado. Se quiser que novos usuários entrem sem confirmar e-mail, em **Authentication > Settings** desative "Confirm email".
 
-3. **URL e chave:** o `web.py` já usa a URL e a chave anon que você informou. Para outro projeto, defina no `.env`: `SUPABASE_URL` e `SUPABASE_ANON_KEY`.
+3. **URL e chave:** o `web.py` usa a URL e a chave anon do Supabase. Para outro projeto, defina as variáveis de ambiente `SUPABASE_URL` e `SUPABASE_ANON_KEY` (no sistema ou no processo que inicia o servidor).
 
 4. **Uso:** ao abrir a dashboard, aparece a tela de **Entrar** / **Criar conta**. Após o login, a config é carregada do Supabase; ao salvar, ela é gravada na sua conta. Trades e log ficam separados por usuário (`data/trades_<user_id>.jsonl` e `resultados_<user_id>.txt`).
 
@@ -69,13 +69,9 @@ pip install -r requirements.txt
 
 ### 2. Configurar credenciais
 
-Copie o exemplo e edite:
+A config é passada pela **dashboard** ao iniciar o bot (Supabase); não é obrigatório usar arquivo `.env`. Para rodar o bot ou scripts manualmente (ex.: `setup_creds.py`, `check_balance.py`), defina as variáveis de ambiente (por exemplo com `export` no terminal). Opcionalmente você pode criar um arquivo `.env` na raiz do projeto (veja `.env.example` como referência das variáveis).
 
-```bash
-copy .env.example .env
-```
-
-Preencha no `.env`:
+Variáveis principais (referência em `env.example`):
 
 - **POLY_PRIVATE_KEY** — Chave privada da carteira (com `0x`)
 - **POLY_FUNDER_ADDRESS** — Endereço que detém os fundos (proxy/carteira)
@@ -83,15 +79,15 @@ Preencha no `.env`:
 - **STARTING_BANKROLL** — Bankroll inicial em USDC
 - **MIN_BET** — Aposta mínima (Polymarket exige mínimo; ex: 2.5 ou 5.0)
 - **MAX_TOKEN_PRICE** — Preço máximo por token em dólares (ex: 0.90 = 90c)
-- **ARB_MIN_PROFIT_PCT** — (Opcional) Lucro mínimo para arbitragem (ex: 0.04 = 4%; 0.02–0.03 para mais oportunidades)
+- **ARB_MIN_PROFIT_PCT** — (Opcional) Lucro mínimo para arbitragem (ex: 0.04 = 4%)
 
-Depois, derive as credenciais da API:
+Para derivar as credenciais da API (uma vez):
 
 ```bash
 python setup_creds.py
 ```
 
-Cole as linhas geradas (`POLY_API_KEY`, `POLY_API_SECRET`, `POLY_API_PASSPHRASE`) no `.env`.
+Use as linhas geradas (`POLY_API_KEY`, `POLY_API_SECRET`, `POLY_API_PASSPHRASE`) no ambiente ou na config da dashboard.
 
 ### 3. Carteira e saldo
 
@@ -144,9 +140,9 @@ python bot.py --dry-run --mode arbitragem --arbitragem-pct 25
 
 | Modo | Aposta | Quando entra | Confiança mín. |
 |------|--------|--------------|----------------|
-| **safe** | Valor fixo em USD (perguntado ou `--safe-bet`) | Últimos 2 min | 30% |
-| **aggressive** | 25% da banca (ou só lucros se bankroll > inicial) | Últimos 2 min | 50% |
-| **only_hedge_plus** | Valor fixo em USD | Últimos 2 min | Só entra com EV+ (P(win) > preço + 2%) |
+| **safe** | Valor fixo em USD (perguntado ou `--safe-bet`) | Últimos 2 min | 72% |
+| **aggressive** | 25% da banca (ou só lucros se bankroll > inicial) | Últimos 2 min | 58% |
+| **only_hedge_plus** | Valor fixo em USD | Últimos 2 min | 72% + só entra com EV+ (P(win) > preço + margem) |
 | **degen** | 100% da banca | Últimos 2 min | 0% |
 | **arbitragem** | % da banca (perguntado ou `--arbitragem-pct`) | **Desde o início da janela** | 30% — prioriza arb pura; senão aposta direcional + hedge; sem hedge = aposta normal |
 
@@ -165,19 +161,28 @@ python compare_runs.py --hours 72 --output results.xlsx
 
 ## Estratégia
 
-O sinal direcional é composto por 7 indicadores ponderados:
+O sinal direcional é composto por 7 indicadores ponderados (ajustados para ser mais assertivos de dia):
 
-1. **Window Delta** (peso 5–7) — Principal: BTC acima ou abaixo do preço de abertura da janela
-2. **Micro Momentum** (2) — Direção dos últimos 2 candles 1min
-3. **Aceleração** (1.5) — Momentum crescendo ou diminuindo
-4. **EMA 9/21** (1) — Cruzamento de médias
-5. **RSI 14** (1–2) — Extremos overbought/oversold
-6. **Volume Surge** (1) — Volume recente vs anterior
-7. **Tick Trend** (2) — Tendência em ticks em tempo real
+1. **Window Delta** (peso 1–7) — Principal: BTC acima ou abaixo do preço de abertura da janela (≥0,2% para peso 1)
+2. **Micro Momentum** (1,5) — Direção dos últimos 2 candles 1min
+3. **Aceleração** (1,2) — Momentum crescendo ou diminuindo
+4. **EMA 9/21** (1,2) — Cruzamento de médias
+5. **RSI 14** (±2) — Só extremos fortes (RSI ≤20 ou ≥80)
+6. **Volume Surge** (1,2) — Volume recente ≥2× o anterior
+7. **Tick Trend** (1,2) — Tendência em ticks (movimento ≥0,008% e consistência ≥65% ou ≤35%)
 
-Score positivo → Up, negativo → Down. Confiança = `min(|score|/7, 1)`.
+Score positivo → Up, negativo → Down. Confiança = `min(|score|/MAX_SCORE, 1)`. Entrada por **Spike** (salto ≥2,5 + confiança ≥48%), **Confiança** (por modo) ou **T-5s** (confiança ≥40%).
 
 **Arbitragem:** o bot primeiro verifica se comprar Up e Down ao mesmo tempo dá lucro garantido (soma dos preços ≤ 1 − `ARB_MIN_PROFIT_PCT`). Se sim, executa as duas pernas. Se não, aposta no lado do sinal de TA e tenta comprar o lado oposto a preço que dê lucro; se não achar, fica só com a aposta direcional.
+
+## Chainlink vs Binance (valor na resolução)
+
+A **resolução** na Polymarket usa o **oráculo Chainlink** (abertura e fechamento da janela). O bot pode usar o **Price to Beat** (abertura Chainlink) como referência para a TA em vez da abertura Binance, alinhando direção e delta ao mesmo preço que será usado no resultado.
+
+- **USE_CHAINLINK_OPEN=1** (padrão): usa abertura Chainlink quando a Gamma API retorna `priceToBeat`; o log mostra o delta Binance–Chainlink em USD e %.
+- **MAX_DELTA_OPEN_USD**: se > 0, pula a janela quando o delta de abertura (Binance − Chainlink) em valor absoluto for maior que esse valor (ex.: 50), evitando operar quando as fontes estão muito dessincronizadas.
+
+Assim você obtém valor ao **alinhar a referência da aposta à referência da resolução** (Chainlink) e, opcionalmente, filtrar janelas com divergência grande entre exchanges.
 
 ## Resolução (dry run)
 

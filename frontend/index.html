@@ -188,6 +188,10 @@
             <input type="number" id="cfg-odd-master-bet" step="0.01" min="0" placeholder="ex: 5" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
           </div>
           <div>
+            <label class="block text-sm text-gray-400 mb-1">90-95 — valor fixo (USD)</label>
+            <input type="number" id="cfg-bet-90-95" step="0.01" min="0" placeholder="ex: 5" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" title="Últimos 10s, entra no lado de maior odd se estiver entre 90c e 95c" />
+          </div>
+          <div>
             <label class="block text-sm text-gray-400 mb-1">Arbitragem — % da banca</label>
             <input type="number" id="cfg-arbitragem-pct" min="1" max="100" placeholder="25" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
           </div>
@@ -198,6 +202,15 @@
           <div>
             <label class="block text-sm text-gray-400 mb-1">Arb — lucro mín. % (ex: 4 = 4%)</label>
             <input type="number" id="cfg-arb-min-pct" step="0.5" min="0" placeholder="4" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div class="border-t border-border pt-3 mt-2">
+            <p class="text-sm text-gray-400 mb-2">Chainlink (resolução)</p>
+            <label class="flex items-center gap-2 cursor-pointer mb-2">
+              <input type="checkbox" id="cfg-use-chainlink-open" class="rounded border-border" />
+              <span class="text-sm">Usar abertura Chainlink (Price to Beat) — alinha TA à resolução</span>
+            </label>
+            <label class="block text-sm text-gray-400 mb-1">Pular janela se delta Binance–Chainlink &gt; (USD)</label>
+            <input type="number" id="cfg-max-delta-open-usd" step="1" min="0" placeholder="0 = não filtrar" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" title="0 = não filtrar; ex: 50 = pular se |delta| &gt; 50 USD" />
           </div>
         </div>
         <div class="mt-4">
@@ -255,6 +268,7 @@
               <option value="aggressive">Agressivo — % da banca</option>
               <option value="only_hedge_plus">Only Hedge+ — só entra com EV+</option>
               <option value="odd_master">ODD MASTER — últimos 10s, price-to-beat ±$10, maior odd</option>
+              <option value="90_95">90-95 — últimos 10s, maior odd entre 90c e 95c (aposta fixa)</option>
               <option value="dry_run">Dry run — simulação (sem ordens reais)</option>
               <option value="arbitragem">Arbitragem — % da banca</option>
             </select>
@@ -274,6 +288,10 @@
           <div id="wrap-odd-master-bet" class="hidden">
             <label class="block text-sm text-gray-400 mb-1">Aposta fixa (USD) — ODD MASTER</label>
             <input type="number" id="bot-odd-master-bet" step="0.01" min="0" placeholder="5" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
+          </div>
+          <div id="wrap-bet-90-95" class="hidden">
+            <label class="block text-sm text-gray-400 mb-1">Aposta fixa (USD) — 90-95</label>
+            <input type="number" id="bot-bet-90-95" step="0.01" min="0" placeholder="5" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
           </div>
           <div id="wrap-arbitragem-pct" class="hidden">
             <label class="block text-sm text-gray-400 mb-1">% da banca (Arbitragem)</label>
@@ -303,7 +321,7 @@
             <button type="button" id="btn-bot-start" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Iniciar</button>
             <button type="button" id="btn-bot-stop" class="px-4 py-2 bg-danger text-white font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Parar</button>
           </div>
-          <p class="text-xs text-muted">Entrada por <strong>Spike</strong> (salto de score + confiança mín. 40%), <strong>Confiança</strong> (por modo: Safe 70%, Aggressive 55%, Only Hedge+ 70%) ou <strong>T-5s</strong> (melhor sinal com confiança mín. 35%).</p>
+          <p class="text-xs text-muted">Entrada por <strong>Spike</strong> (salto de score + confiança mín. 48%), <strong>Confiança</strong> (por modo: Safe 72%, Aggressive 58%, Only Hedge+ 72%) ou <strong>T-5s</strong> (melhor sinal com confiança mín. 40%).</p>
         </div>
       </div>
       </div>
@@ -603,18 +621,22 @@
         getEl('cfg-aggressive-pct').value = c.aggressive_bet_pct ?? 25;
         getEl('cfg-max-token').value = c.max_token_price ?? 0.9;
         getEl('cfg-arb-min-pct').value = ((c.arb_min_profit_pct ?? 0.04) * 100);
+        getEl('cfg-use-chainlink-open').checked = c.use_chainlink_open !== false;
+        getEl('cfg-max-delta-open-usd').value = c.max_delta_open_usd ?? 0;
         if (c.safe_bet != null) getEl('cfg-safe-bet').value = c.safe_bet;
         if (c.only_hedge_bet != null) getEl('cfg-only-hedge-bet').value = c.only_hedge_bet;
         if (c.odd_master_bet != null) getEl('cfg-odd-master-bet').value = c.odd_master_bet;
+        if (c.bet_90_95 != null) getEl('cfg-bet-90-95').value = c.bet_90_95;
         if (c.arbitragem_pct != null) getEl('cfg-arbitragem-pct').value = c.arbitragem_pct;
         if (c.safe_bet != null) getEl('bot-safe-bet').value = c.safe_bet;
         if (c.only_hedge_bet != null) getEl('bot-only-hedge-bet').value = c.only_hedge_bet;
         if (c.odd_master_bet != null) getEl('bot-odd-master-bet').value = c.odd_master_bet;
+        if (c.bet_90_95 != null) getEl('bot-bet-90-95').value = c.bet_90_95;
         if (c.arbitragem_pct != null) getEl('bot-arbitragem-pct').value = c.arbitragem_pct;
         if (c.aggressive_bet_pct != null) getEl('bot-aggressive-pct').value = c.aggressive_bet_pct;
         // Sincronizar dropdown "Modo" do Iniciar com a config salva (evita iniciar em safe sem querer)
         const modeEl = getEl('bot-mode');
-        if (c.bot_mode && ['safe','aggressive','only_hedge_plus','dry_run','arbitragem','odd_master'].includes(c.bot_mode)) {
+        if (c.bot_mode && ['safe','aggressive','only_hedge_plus','dry_run','arbitragem','odd_master','90_95'].includes(c.bot_mode)) {
           modeEl.value = c.bot_mode;
         } else {
           modeEl.value = 'safe';
@@ -788,7 +810,9 @@
         min_bet: parseFloat(getEl('cfg-min-bet').value) || 5,
         aggressive_bet_pct: parseFloat(getEl('cfg-aggressive-pct').value) || 25,
         max_token_price: parseFloat(getEl('cfg-max-token').value) || 0.9,
-        arb_min_profit_pct: (parseFloat(getEl('cfg-arb-min-pct').value) || 4) / 100
+        arb_min_profit_pct: (parseFloat(getEl('cfg-arb-min-pct').value) || 4) / 100,
+        use_chainlink_open: getEl('cfg-use-chainlink-open').checked,
+        max_delta_open_usd: parseFloat(getEl('cfg-max-delta-open-usd').value) || 0
       };
       const key = getEl('input-private-key').value.trim();
       if (key && key !== '0x...') payload.private_key = key;
@@ -803,6 +827,8 @@
       if (!isNaN(onlyHedgeBet) && onlyHedgeBet > 0) payload.only_hedge_bet = onlyHedgeBet;
       const oddMasterBet = parseFloat(getEl('cfg-odd-master-bet').value);
       if (!isNaN(oddMasterBet) && oddMasterBet > 0) payload.odd_master_bet = oddMasterBet;
+      const bet9095 = parseFloat(getEl('cfg-bet-90-95').value);
+      if (!isNaN(bet9095) && bet9095 > 0) payload.bet_90_95 = bet9095;
       const arbPct = parseFloat(getEl('cfg-arbitragem-pct').value);
       if (!isNaN(arbPct) && arbPct > 0) payload.arbitragem_pct = arbPct;
       try {
@@ -827,6 +853,7 @@
       getEl('wrap-aggressive-pct').classList.toggle('hidden', v !== 'aggressive');
       getEl('wrap-only-hedge-bet').classList.toggle('hidden', v !== 'only_hedge_plus');
       getEl('wrap-odd-master-bet').classList.toggle('hidden', v !== 'odd_master');
+      getEl('wrap-bet-90-95').classList.toggle('hidden', v !== '90_95');
       getEl('wrap-arbitragem-pct').classList.toggle('hidden', v !== 'arbitragem');
       getEl('wrap-dry-run').classList.toggle('hidden', v !== 'dry_run');
     }
@@ -910,6 +937,10 @@
       if (mode === 'odd_master') {
         const v = parseFloat(getEl('bot-odd-master-bet').value);
         if (!isNaN(v)) body.odd_master_bet = v;
+      }
+      if (mode === '90_95') {
+        const v = parseFloat(getEl('bot-bet-90-95').value);
+        if (!isNaN(v)) body.bet_90_95 = v;
       }
       if (mode === 'arbitragem') {
         const v = parseFloat(getEl('bot-arbitragem-pct').value);
