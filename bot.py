@@ -175,6 +175,29 @@ def get_bankroll_from_api(client) -> Optional[float]:
         return None
 
 
+def _normalize_private_key(raw: str) -> str:
+    """Remove espaços e caracteres não-hex; garante formato aceito por eth_account."""
+    if not raw or not isinstance(raw, str):
+        return ""
+    s = raw.strip()
+    if s.lower() in ("", "0x...", "0x"):
+        return ""
+    if s.startswith("0x") or s.startswith("0X"):
+        prefix = "0x"
+        rest = s[2:]
+    else:
+        prefix = ""
+        rest = s
+    hex_chars = set("0123456789abcdefABCDEF")
+    cleaned = "".join(c for c in rest if c in hex_chars)
+    if len(cleaned) != 64:
+        raise ValueError(
+            f"Chave privada inválida: após limpar caracteres extras restaram {len(cleaned)} caracteres hex (esperado 64). "
+            "Verifique se a chave na Config está completa e sem espaços ou caracteres estranhos."
+        )
+    return prefix + cleaned
+
+
 def create_clob_client():
     """Cria ClobClient autenticado."""
     from py_clob_client.client import ClobClient
@@ -189,6 +212,12 @@ def create_clob_client():
     api_pass = os.getenv("POLY_API_PASSPHRASE", "").strip()
 
     if not key or key == "0x...":
+        raise ValueError("Defina POLY_PRIVATE_KEY no .env")
+    try:
+        key = _normalize_private_key(key)
+    except ValueError as e:
+        raise ValueError(str(e))
+    if not key:
         raise ValueError("Defina POLY_PRIVATE_KEY no .env")
     if not api_key or not api_secret or not api_pass:
         raise ValueError("Defina POLY_API_KEY, POLY_API_SECRET e POLY_API_PASSPHRASE")
