@@ -90,8 +90,12 @@ def run_claim(
             signature_type=sig_type,
         )
 
-        # Endereço cujas posições vamos buscar (proxy/Safe já é o web3.address quando sig_type 1 ou 2)
-        user_address = web3.address
+        # Para buscar posições: quem tem as posições na Polymarket é o endereço do portfólio.
+        # Com proxy/Magic (1 ou 2) as posições estão no funder_address; com EOA (0) estão no web3.address.
+        if funder and sig_type in (1, 2):
+            user_address = funder
+        else:
+            user_address = web3.address
 
         data_client = PolymarketDataClient()
         positions = data_client.get_positions(
@@ -101,12 +105,13 @@ def run_claim(
         )
 
         if not positions:
+            short_addr = (user_address[:10] + "..." + user_address[-6:]) if len(user_address) >= 16 else user_address
             return {
                 "ok": True,
                 "redeemed": 0,
                 "failed": 0,
                 "total_value": 0.0,
-                "message": "Nenhuma posição para resgatar.",
+                "message": f"Nenhuma posição para resgatar (endereço consultado: {short_addr}).",
                 "details": [],
                 "error": None,
             }

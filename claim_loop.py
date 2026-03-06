@@ -13,7 +13,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# Não sobrescrever POLY_* que a dashboard passou ao iniciar o processo (credenciais do Supabase)
+load_dotenv(override=False)
 
 # Intervalo entre execuções (segundos)
 CLAIM_INTERVAL_SEC = int(os.getenv("CLAIM_INTERVAL_SEC", "60"))
