@@ -507,6 +507,23 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
             best_score = result.score
             best_result = result
 
+        # Modo 90-95: sem estratégia (spike/confiança/T-5s); só filtros: janela 20s–2s + preço 80–95c
+        if active_mode == "90_95" and tokens and len(tokens) == 2 and event:
+            from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
+            trade_direction = result.direction
+            final_result = result
+            tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
+            if tok_price is not None and MODE_90_95_MIN_ODD <= tok_price <= MODE_90_95_MAX_ODD:
+                fired = True
+                print(f"  [{market.upper()}] 90-95: {trade_direction.upper()} @ {tok_price:.2f} (80–95c) -> executando ordem", flush=True)
+                break
+
+        if active_mode == "90_95":
+            prev_score = result.score
+            poll = ARB_POLL_INTERVAL if active_mode == "arbitragem" else (1 if active_mode == "90_95" else TA_POLL_INTERVAL)
+            time.sleep(poll)
+            continue
+
         if abs(result.score - prev_score) >= SPIKE_THRESHOLD and prev_score != 0:
             # Spike mais assertivo: só dispara se confiança mínima (evita ruído)
             if result.confidence >= SPIKE_MIN_CONFIDENCE:
@@ -519,15 +536,6 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                         break
                     else:
                         print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} (sem EV+, continuando)", flush=True)
-                elif active_mode == "90_95":
-                    from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
-                    tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
-                    if tok_price is not None and MODE_90_95_MIN_ODD <= tok_price <= MODE_90_95_MAX_ODD:
-                        fired = True
-                        print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} @ {tok_price:.2f} (80–95c) -> executando ordem", flush=True)
-                        break
-                    if tok_price is not None:
-                        print(f"  [{market.upper()}] 90-95: SPIKE -> {result.direction} mas preço {tok_price:.2f} fora 80–95c, continuando.", flush=True)
                 else:
                     fired = True
                     print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction}", flush=True)
@@ -546,15 +554,6 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                     break
                 else:
                     print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction} (sem EV+, continuando)", flush=True)
-            elif active_mode == "90_95":
-                from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
-                tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
-                if tok_price is not None and MODE_90_95_MIN_ODD <= tok_price <= MODE_90_95_MAX_ODD:
-                    fired = True
-                    print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction} @ {tok_price:.2f} (80–95c) -> executando ordem", flush=True)
-                    break
-                if tok_price is not None:
-                    print(f"  [{market.upper()}] 90-95: Confiança -> {result.direction} mas preço {tok_price:.2f} fora 80–95c, continuando.", flush=True)
             else:
                 fired = True
                 print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction}", flush=True)
@@ -577,14 +576,9 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
             else:
                 dm = _dynamic_ev_margin(final_result)
                 print(f"  [{market.upper()}] T-5s: sinal sem EV+ (P não > preço+margem {dm:.0%}), pulando.", flush=True)
-        elif active_mode == "90_95" and tokens and len(tokens) == 2 and event:
-            from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
-            tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
-            if tok_price is not None and MODE_90_95_MIN_ODD <= tok_price <= MODE_90_95_MAX_ODD:
-                fired = True
-                print(f"  [{market.upper()}] T-5s: melhor sinal -> {trade_direction} @ {tok_price:.2f} (80–95c)", flush=True)
-            else:
-                print(f"  [{market.upper()}] T-5s: melhor sinal {trade_direction} fora da faixa 80–95c (preço {tok_price}), pulando.", flush=True)
+        elif active_mode == "90_95":
+            # 90-95 não usa T-5s (apenas filtros janela + 80–95c)
+            pass
         else:
             fired = True
             print(f"  [{market.upper()}] T-5s: melhor sinal -> {trade_direction} (score {best_score:.2f})", flush=True)
@@ -700,6 +694,11 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                 if active_mode != "arbitragem":
                     print(f"  [{market.upper()}] Token @ ${token_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
                     return False
+            # Modo 90-95: só executar (mesmo dry run) se preço ainda estiver entre 80c e 95c
+            if active_mode == "90_95" and token_price is not None:
+                if token_price < MODE_90_95_MIN_ODD or token_price > MODE_90_95_MAX_ODD:
+                    print(f"  [{market.upper()}] DRY RUN 90-95: preço atual ${token_price:.2f} fora da faixa 80–95c, pulando.", flush=True)
+                    return False
             shares = bet_size / token_price
             if active_mode == "arbitragem" and tokens and len(tokens) == 2:
                 token_other_id = tokens[1] if trade_direction == "up" else tokens[0]
@@ -743,6 +742,14 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     if real_price is not None and real_price > MAX_TOKEN_PRICE and active_mode != "arbitragem":
         print(f"  [{market.upper()}] Token @ ${real_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
         return False
+    # Modo 90-95: só executar ordem real se preço ainda estiver entre 80c e 95c (revalidação antes de enviar)
+    if active_mode == "90_95":
+        if real_price is None:
+            print(f"  [{market.upper()}] 90-95: preço do token indisponível, pulando.", flush=True)
+            return False
+        if real_price < MODE_90_95_MIN_ODD or real_price > MODE_90_95_MAX_ODD:
+            print(f"  [{market.upper()}] 90-95: preço atual ${real_price:.2f} fora da faixa 80–95c, não enviando ordem.", flush=True)
+            return False
     if active_mode == "only_hedge_plus" and final_result is not None and real_price is not None:
         p_win = final_result.estimated_p_up if trade_direction == "up" else (1 - final_result.estimated_p_up)
         dynamic_margin = _dynamic_ev_margin(final_result)
