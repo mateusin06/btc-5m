@@ -66,12 +66,12 @@ WINDOW_SEC = 300
 WINDOW_SEC_15M = 900
 MONITOR_START_T = 120      # BTC/ETH 5m (safe, aggressive, etc.): começar a tentar quando faltar 2 min
 MONITOR_START_T_15M = 300  # BTC 15m: começar quando faltar 5 min
-HARD_DEADLINE_T = 40       # Parar de tentar quando faltar 40s (safe, aggressive, etc.)
-MIN_SECS_TO_ENTER = 40
+HARD_DEADLINE_T = 20       # Parar de tentar quando faltar 40s (safe, aggressive, etc.)
+MIN_SECS_TO_ENTER = 20
 TA_POLL_INTERVAL = 2
-SPIKE_THRESHOLD = 2.5   # Salto mínimo de score para spike (mais assertivo; evita ruído de dia)
-SPIKE_MIN_CONFIDENCE = 0.40  # Spike só dispara se confiança >= 40%
-T5S_MIN_CONFIDENCE = 0.40   # T-5s só dispara se melhor sinal tiver confiança >= 40%
+SPIKE_THRESHOLD = 2.2   # Salto mínimo de score para spike (mais assertivo; evita ruído de dia)
+SPIKE_MIN_CONFIDENCE = 0.35  # Spike só dispara se confiança >= 35%
+T5S_MIN_CONFIDENCE = 0.30   # T-5s só dispara se melhor sinal tiver confiança >= 40%
 ORDER_RETRY_INTERVAL = 3
 ORDER_MAX_FOK_RETRIES = 5  # Limite de retentativas FOK para não bloquear outros mercados (ex: ETH)
 MIN_SHARES = 5
@@ -349,7 +349,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     """
     global _last_bet_window_by_market
     from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market, get_btc_candles_1m, get_price_to_beat, get_open_delta_binance_chainlink
-    from strategy import analyze
+    from strategy import analyze, MIN_CANDLES_FOR_FULL_TA
 
     # Fonte única de verdade: SEMPRE usar FROZEN_MODE quando estiver definido (evita 2 compras com modos diferentes)
     if FROZEN_MODE is not None:
@@ -494,9 +494,10 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         price = get_price_by_market(market)
         if price:
             tick_prices.append(price)
-        # Para btc15m usar candles 1m na TA para que todos os 7 indicadores da estratégia rodem
-        candles = get_btc_candles_1m(limit=30) if is_15m else get_candles_by_market(market, limit=30)
-        if not candles:
+        # Candles 1m com volume: pelo menos MIN_CANDLES_FOR_FULL_TA para RSI, Volume Surge, Acceleration, Micro Momentum, EMA
+        candle_limit_ta = max(30, MIN_CANDLES_FOR_FULL_TA)
+        candles = get_btc_candles_1m(limit=candle_limit_ta) if is_15m else get_candles_by_market(market, limit=candle_limit_ta)
+        if not candles or len(candles) < MIN_CANDLES_FOR_FULL_TA:
             time.sleep(ARB_POLL_INTERVAL if active_mode == "arbitragem" else (1 if active_mode == "90_95" else TA_POLL_INTERVAL))
             continue
 
@@ -523,9 +524,10 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                     tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
                     if tok_price is not None and MODE_90_95_MIN_ODD <= tok_price <= MODE_90_95_MAX_ODD:
                         fired = True
-                        print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} @ {tok_price:.2f} (80–95c)", flush=True)
+                        print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} @ {tok_price:.2f} (80–95c) -> executando ordem", flush=True)
                         break
-                    # fora da faixa, continua
+                    if tok_price is not None:
+                        print(f"  [{market.upper()}] 90-95: SPIKE -> {result.direction} mas preço {tok_price:.2f} fora 80–95c, continuando.", flush=True)
                 else:
                     fired = True
                     print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction}", flush=True)
@@ -549,9 +551,10 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                 tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
                 if tok_price is not None and MODE_90_95_MIN_ODD <= tok_price <= MODE_90_95_MAX_ODD:
                     fired = True
-                    print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction} @ {tok_price:.2f} (80–95c)", flush=True)
+                    print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction} @ {tok_price:.2f} (80–95c) -> executando ordem", flush=True)
                     break
-                # fora da faixa, continua
+                if tok_price is not None:
+                    print(f"  [{market.upper()}] 90-95: Confiança -> {result.direction} mas preço {tok_price:.2f} fora 80–95c, continuando.", flush=True)
             else:
                 fired = True
                 print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction}", flush=True)
@@ -589,6 +592,9 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     if not fired or not trade_direction:
         print(f"  [{market.upper()}] Sem sinal válido, pulando janela.", flush=True)
         return False
+
+    if active_mode == "90_95":
+        print(f"  [{market.upper()}] 90-95: sinal válido -> {trade_direction.upper()}, calculando aposta e executando.", flush=True)
 
     # 4. Calcular tamanho da aposta
     # Safe e only_hedge_plus: valor fixo

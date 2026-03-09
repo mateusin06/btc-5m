@@ -23,6 +23,9 @@ WEIGHT_RSI = 2
 WEIGHT_VOLUME_SURGE = 1.2     # Só conta surtos mais fortes (limiar 2x)
 WEIGHT_TICK_TREND = 1.2       # Reduzido: tick em tempo real muito ruidoso de dia
 
+# Mínimo de candles 1m para que todos os indicadores (RSI, Volume Surge, Acceleration, Micro Momentum, EMA) sejam calculados
+MIN_CANDLES_FOR_FULL_TA = 21
+
 
 # Normalização: confiança e P(Up) usam score em [-MAX_SCORE, +MAX_SCORE]
 # (window_delta sozinho pode contribuir ±7; demais indicadores somam no mesmo eixo)
@@ -106,8 +109,17 @@ def analyze(
     """
     Analisa e retorna score composto usado pelo bot para direção e confiança.
 
-    O bot usa: result.direction, result.confidence (vs min_confidence do modo),
-    result.estimated_p_up e result.window_delta_pct (only_hedge_plus EV+).
+    Utiliza sempre estes 7 sinais técnicos (quando há dados suficientes):
+    1. Window Delta (preço vs abertura da janela)
+    2. Micro Momentum (últimos 2 candles)
+    3. Acceleration (aceleração do preço)
+    4. EMA 9/21 (cruzamento)
+    5. RSI 14
+    6. Volume Surge (surtos >= 2x volume anterior)
+    7. Tick Trend (tendência em tempo real, se tick_prices disponível)
+
+    Para todos os indicadores 2–6 rodarem, candles_1m deve ter pelo menos
+    MIN_CANDLES_FOR_FULL_TA candles com campo "v" (volume). O bot passa 30 candles 1m.
 
     Args:
         window_open_price: Preço de abertura da janela (5min ou 15min)
@@ -173,26 +185,28 @@ def analyze(
         details["rsi"] = rsi
         details["rsi_weight"] = rsi_w
 
-    # 6. Volume Surge (mais assertivo: só surtos claros, 2x volume)
+    # 6. Volume Surge (mais assertivo: só surtos claros, 2x volume) — sempre avaliado com 6+ candles
     if len(volumes) >= 6:
         recent_avg = sum(volumes[-3:]) / 3
         prior_avg = sum(volumes[-6:-3]) / 3
+        surge_dir = 0
         if prior_avg > 0 and recent_avg >= 2.0 * prior_avg:
             surge_dir = 1 if prices[-1] > prices[-2] else -1
             score += surge_dir * WEIGHT_VOLUME_SURGE
-            details["volume_surge"] = surge_dir
+        details["volume_surge"] = surge_dir  # 0 = sem surto; ±1 = surto na direção
 
-    # 7. Real-Time Tick Trend (mais assertivo: movimento e consistência maiores)
+    # 7. Real-Time Tick Trend (mais assertivo: movimento e consistência maiores) — avaliado quando há 5+ ticks
     if tick_prices and len(tick_prices) >= 5:
         first = tick_prices[0]
         last = tick_prices[-1]
         move_pct = (last - first) / first * 100
         ups = sum(1 for i in range(1, len(tick_prices)) if tick_prices[i] > tick_prices[i - 1])
         consistency = ups / (len(tick_prices) - 1) if len(tick_prices) > 1 else 0.5
+        tick_dir = 0
         if abs(move_pct) >= 0.008 and (consistency >= 0.65 or consistency <= 0.35):
             tick_dir = 1 if consistency >= 0.65 else -1
             score += tick_dir * WEIGHT_TICK_TREND
-            details["tick_trend"] = tick_dir
+        details["tick_trend"] = tick_dir  # 0 = sem sinal; ±1 = tendência
 
     confidence = min(abs(score) / MAX_SCORE, 1.0)
     norm = max(-MAX_SCORE, min(MAX_SCORE, score))
