@@ -467,10 +467,15 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         # Modo 90-95: janela 10s–2s; usa spike e confiança, mas só dispara se o preço do lado escolhido estiver entre 80c e 95c
         if active_mode == "90_95" and tokens and len(tokens) == 2 and event:
             secs = seconds_until_close(window_ts, window_sec)
-            if secs > MODE_90_95_LAST_SEC or secs < MODE_90_95_EARLY_EXIT:
+            # Só analisar e tentar entrar quando 2 <= secs <= 10 (desde 10s até 2s antes do close)
+            if secs > MODE_90_95_LAST_SEC:
                 time.sleep(1)
                 continue
-            # Dentro da janela: não continue; deixa cair no fluxo de TA (analyze, spike, confiança) e filtrar por 80–95c ao disparar
+            if secs < MODE_90_95_EARLY_EXIT:
+                time.sleep(1)
+                continue
+            # Dentro da janela: segue para TA (analyze, spike, confiança)
+            print(f"  [{market.upper()}] 90-95: janela ativa ({secs}s para close), analisando...", flush=True)
 
         # Modo arbitragem: prioridade para arb pura a cada iteração (Up+Down < 1-margem)
         if active_mode == "arbitragem" and tokens and len(tokens) == 2 and event:
@@ -491,7 +496,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         # Para btc15m usar candles 1m na TA para que todos os 7 indicadores da estratégia rodem
         candles = get_btc_candles_1m(limit=30) if is_15m else get_candles_by_market(market, limit=30)
         if not candles:
-            time.sleep(ARB_POLL_INTERVAL if active_mode == "arbitragem" else TA_POLL_INTERVAL)
+            time.sleep(ARB_POLL_INTERVAL if active_mode == "arbitragem" else (1 if active_mode == "90_95" else TA_POLL_INTERVAL))
             continue
 
         result = analyze(window_open, price or candles[-1]["c"], candles, tick_prices[-20:] if tick_prices else None)
@@ -552,7 +557,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                 break
 
         prev_score = result.score
-        poll = ARB_POLL_INTERVAL if active_mode == "arbitragem" else TA_POLL_INTERVAL
+        poll = ARB_POLL_INTERVAL if active_mode == "arbitragem" else (1 if active_mode == "90_95" else TA_POLL_INTERVAL)
         time.sleep(poll)
 
     if not fired and best_result:
