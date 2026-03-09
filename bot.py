@@ -46,7 +46,7 @@ MODES = {
     "arbitragem": {"min_confidence": 0.30},
     "only_hedge_plus": {"min_confidence": 0.72},
     "odd_master": {},  # Estratégia própria: últimos 10s, price-to-beat dentro de $10, maior odd
-    "90_95": {},       # Últimos 10s, entra no lado de maior odd só se a odd estiver entre 90c e 95c; aposta fixa
+    "90_95": {"min_confidence": 0.55},  # Usa spike e confiança; só entra se preço do lado estiver entre 80c e 95c
 }
 EV_MIN_MARGIN = 0.02
 ARB_MIN_PROFIT_PCT = float(os.getenv("ARB_MIN_PROFIT_PCT", "0.04"))
@@ -54,9 +54,11 @@ ARB_POLL_INTERVAL = 1
 ARB_DEADLINE_T = 10
 ODD_MASTER_LAST_SEC = 10  # Entrar apenas nos últimos 10 segundos
 ODD_MASTER_MAX_DIFF_USD = 10.0  # Price to beat entre 0 e $10 de diferença do preço atual
-MODE_90_95_LAST_SEC = 10   # 90-95: últimos 10s
-MODE_90_95_MIN_ODD = 0.90  # 90-95: odd mínima (90c)
-MODE_90_95_MAX_ODD = 0.95  # 90-95: odd máxima (95c)
+MODE_90_95_LAST_SEC = 10   # 90-95: janela de entrada entre 10s e 2s antes do close
+MODE_90_95_EARLY_EXIT = 2  # 90-95: não entrar quando faltar menos de 2s
+MODE_90_95_MIN_ODD = 0.80  # 90-95: preço mín. do contrato (80c) — só neste modo
+MODE_90_95_MAX_ODD = 0.95  # 90-95: preço máx. do contrato (95c) — só neste modo
+ODD_MASTER_EARLY_EXIT = 2  # ODD MASTER: não entrar quando faltar menos de 2s
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -428,12 +430,19 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     trade_direction = None
     final_result = None
 
-    # Para ODD MASTER e 90-95: loop até 10s antes do close; para outros modos até 40s antes
-    deadline_sec = ODD_MASTER_LAST_SEC if active_mode == "odd_master" else (MODE_90_95_LAST_SEC if active_mode == "90_95" else HARD_DEADLINE_T)
+    # Para ODD MASTER e 90-95: loop até 2s antes do close (entrada só entre 10s e 2s); para outros modos até 40s antes
+    if active_mode in ("odd_master", "90_95"):
+        deadline_sec = ODD_MASTER_EARLY_EXIT  # 2s — assim o loop continua até faltar 2s; dentro do bloco checamos 2 <= secs <= 10
+    else:
+        deadline_sec = HARD_DEADLINE_T
 
     while int(time.time()) < close_time - deadline_sec:
-        # Modo ODD MASTER: últimos 10s, price-to-beat entre 0 e $10 do preço atual, entrar no lado de maior odd
+        # Modo ODD MASTER: entrar SOMENTE entre 10s e 2s antes do close; lado de MAIOR ODD = menor preço (centavos)
         if active_mode == "odd_master" and tokens and len(tokens) == 2 and event:
+            secs = seconds_until_close(window_ts, window_sec)
+            if secs > ODD_MASTER_LAST_SEC or secs < ODD_MASTER_EARLY_EXIT:
+                time.sleep(1)
+                continue
             from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
             current_price = get_price_by_market(market)
             if current_price is not None and window_open is not None:
@@ -442,36 +451,26 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                     price_up = _get_tok(tokens[0], "BUY") or _get_ev(event, "up")
                     price_down = _get_tok(tokens[1], "BUY") or _get_ev(event, "down")
                     if price_up is not None and price_down is not None and 0 < price_up < 1 and 0 < price_down < 1:
+                        # Maior odd = menor preço em centavos (underdog)
+                        if price_up <= price_down:
+                            trade_direction = "up"
+                            odd = price_up
+                        else:
+                            trade_direction = "down"
+                            odd = price_down
                         fired = True
-                        trade_direction = "up" if price_up >= price_down else "down"
-                        odd = price_up if trade_direction == "up" else price_down
-                        print(f"  [{market.upper()}] ODD MASTER: price-to-beat ${window_open:.2f} vs atual ${current_price:.2f} (diff ${diff_usd:.2f}) | maior odd = {trade_direction.upper()} @ {odd:.2f}", flush=True)
+                        print(f"  [{market.upper()}] ODD MASTER: price-to-beat ${window_open:.2f} vs atual ${current_price:.2f} (diff ${diff_usd:.2f}) | maior odd (menor preço) = {trade_direction.upper()} @ {odd:.2f}", flush=True)
                         break
             time.sleep(1)
             continue
 
-        # Modo 90-95: últimos 10s, entra no lado de maior odd só se a odd estiver entre 90c e 95c
+        # Modo 90-95: janela 10s–2s; usa spike e confiança, mas só dispara se o preço do lado escolhido estiver entre 80c e 95c
         if active_mode == "90_95" and tokens and len(tokens) == 2 and event:
-            from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
-            price_up = _get_tok(tokens[0], "BUY") or _get_ev(event, "up")
-            price_down = _get_tok(tokens[1], "BUY") or _get_ev(event, "down")
-            if price_up is not None and price_down is not None and 0 < price_up < 1 and 0 < price_down < 1:
-                if price_up >= price_down:
-                    odd = price_up
-                    if MODE_90_95_MIN_ODD <= odd <= MODE_90_95_MAX_ODD:
-                        fired = True
-                        trade_direction = "up"
-                        print(f"  [{market.upper()}] 90-95: maior odd = UP @ {odd:.2f} (entre 90–95c)", flush=True)
-                        break
-                else:
-                    odd = price_down
-                    if MODE_90_95_MIN_ODD <= odd <= MODE_90_95_MAX_ODD:
-                        fired = True
-                        trade_direction = "down"
-                        print(f"  [{market.upper()}] 90-95: maior odd = DOWN @ {odd:.2f} (entre 90–95c)", flush=True)
-                        break
-            time.sleep(1)
-            continue
+            secs = seconds_until_close(window_ts, window_sec)
+            if secs > MODE_90_95_LAST_SEC or secs < MODE_90_95_EARLY_EXIT:
+                time.sleep(1)
+                continue
+            # Dentro da janela: não continue; deixa cair no fluxo de TA (analyze, spike, confiança) e filtrar por 80–95c ao disparar
 
         # Modo arbitragem: prioridade para arb pura a cada iteração (Up+Down < 1-margem)
         if active_mode == "arbitragem" and tokens and len(tokens) == 2 and event:
@@ -513,6 +512,14 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                         break
                     else:
                         print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} (sem EV+, continuando)", flush=True)
+                elif active_mode == "90_95":
+                    from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
+                    tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
+                    if tok_price is not None and MODE_90_95_MIN_ODD <= tok_price <= MODE_90_95_MAX_ODD:
+                        fired = True
+                        print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} @ {tok_price:.2f} (80–95c)", flush=True)
+                        break
+                    # fora da faixa, continua
                 else:
                     fired = True
                     print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction}", flush=True)
@@ -521,7 +528,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                 print(f"  [{market.upper()}] SPIKE ignorado (confiança {result.confidence:.1%} < {SPIKE_MIN_CONFIDENCE:.0%})", flush=True)
 
         mode_cfg = MODES.get(active_mode, MODES["safe"])
-        if result.confidence >= mode_cfg["min_confidence"]:
+        if result.confidence >= mode_cfg.get("min_confidence", 0):
             trade_direction = result.direction
             final_result = result
             if active_mode == "only_hedge_plus":
@@ -531,6 +538,14 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                     break
                 else:
                     print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction} (sem EV+, continuando)", flush=True)
+            elif active_mode == "90_95":
+                from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
+                tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
+                if tok_price is not None and MODE_90_95_MIN_ODD <= tok_price <= MODE_90_95_MAX_ODD:
+                    fired = True
+                    print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction} @ {tok_price:.2f} (80–95c)", flush=True)
+                    break
+                # fora da faixa, continua
             else:
                 fired = True
                 print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction}", flush=True)
@@ -553,6 +568,14 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
             else:
                 dm = _dynamic_ev_margin(final_result)
                 print(f"  [{market.upper()}] T-5s: sinal sem EV+ (P não > preço+margem {dm:.0%}), pulando.", flush=True)
+        elif active_mode == "90_95" and tokens and len(tokens) == 2 and event:
+            from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
+            tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
+            if tok_price is not None and MODE_90_95_MIN_ODD <= tok_price <= MODE_90_95_MAX_ODD:
+                fired = True
+                print(f"  [{market.upper()}] T-5s: melhor sinal -> {trade_direction} @ {tok_price:.2f} (80–95c)", flush=True)
+            else:
+                print(f"  [{market.upper()}] T-5s: melhor sinal {trade_direction} fora da faixa 80–95c (preço {tok_price}), pulando.", flush=True)
         else:
             fired = True
             print(f"  [{market.upper()}] T-5s: melhor sinal -> {trade_direction} (score {best_score:.2f})", flush=True)
@@ -1017,7 +1040,7 @@ def main():
     if config.mode == "odd_master":
         print(f"ODD MASTER: entrada fixa ${config.fixed_bet_odd_master or config.min_bet:.2f} | últimos {ODD_MASTER_LAST_SEC}s, price-to-beat ±${ODD_MASTER_MAX_DIFF_USD:.0f}, maior odd", flush=True)
     if config.mode == "90_95":
-        print(f"90-95: entrada fixa ${config.fixed_bet_90_95 or config.min_bet:.2f} | últimos {MODE_90_95_LAST_SEC}s, maior odd entre {MODE_90_95_MIN_ODD:.0%} e {MODE_90_95_MAX_ODD:.0%}", flush=True)
+        print(f"90-95: entrada fixa ${config.fixed_bet_90_95 or config.min_bet:.2f} | janela 10s–2s p/ close, maior preço entre {MODE_90_95_MIN_ODD:.0%} e {MODE_90_95_MAX_ODD:.0%}", flush=True)
     if config.mode == "arbitragem" and config.arbitragem_bet_pct is not None:
         print(f"Arbitragem: {config.arbitragem_bet_pct * 100:.0f}% da banca (via API) | Sem oportunidade = aposta normal", flush=True)
     if config.mode == "aggressive":
