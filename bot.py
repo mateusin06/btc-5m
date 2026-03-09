@@ -54,7 +54,7 @@ ARB_POLL_INTERVAL = 1
 ARB_DEADLINE_T = 10
 ODD_MASTER_LAST_SEC = 10  # Entrar apenas nos últimos 10 segundos
 ODD_MASTER_MAX_DIFF_USD = 10.0  # Price to beat entre 0 e $10 de diferença do preço atual
-MODE_90_95_LAST_SEC = 10   # 90-95: janela de entrada entre 10s e 2s antes do close
+MODE_90_95_LAST_SEC = 20   # 90-95: janela de entrada entre 20s e 2s antes do close
 MODE_90_95_EARLY_EXIT = 2  # 90-95: não entrar quando faltar menos de 2s
 MODE_90_95_MIN_ODD = 0.80  # 90-95: preço mín. do contrato (80c) — só neste modo
 MODE_90_95_MAX_ODD = 0.95  # 90-95: preço máx. do contrato (95c) — só neste modo
@@ -64,13 +64,13 @@ CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
 WINDOW_SEC = 300
 WINDOW_SEC_15M = 900
-MONITOR_START_T = 120
-MONITOR_START_T_15M = 300
-HARD_DEADLINE_T = 40
+MONITOR_START_T = 120      # BTC/ETH 5m (safe, aggressive, etc.): começar a tentar quando faltar 2 min
+MONITOR_START_T_15M = 300  # BTC 15m: começar quando faltar 5 min
+HARD_DEADLINE_T = 40       # Parar de tentar quando faltar 40s (safe, aggressive, etc.)
 MIN_SECS_TO_ENTER = 40
 TA_POLL_INTERVAL = 2
 SPIKE_THRESHOLD = 2.5   # Salto mínimo de score para spike (mais assertivo; evita ruído de dia)
-SPIKE_MIN_CONFIDENCE = 0.48  # Spike só dispara se confiança >= 48%
+SPIKE_MIN_CONFIDENCE = 0.40  # Spike só dispara se confiança >= 40%
 T5S_MIN_CONFIDENCE = 0.40   # T-5s só dispara se melhor sinal tiver confiança >= 40%
 ORDER_RETRY_INTERVAL = 3
 ORDER_MAX_FOK_RETRIES = 5  # Limite de retentativas FOK para não bloquear outros mercados (ex: ETH)
@@ -360,6 +360,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     window_sec = WINDOW_SEC_15M if is_15m else WINDOW_SEC
     window_ts = get_window_ts_15m() if is_15m else get_window_ts()
     close_time = window_ts + window_sec
+    # Safe/aggressive: BTC-ETH 5m = desde 2 min até 40s; BTC 15m = desde 5 min até 40s
     monitor_secs = (
         MONITOR_START_T_15M if is_15m else (
             ODD_MASTER_LAST_SEC if active_mode == "odd_master" else
@@ -430,7 +431,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     trade_direction = None
     final_result = None
 
-    # Para ODD MASTER e 90-95: loop até 2s antes do close (entrada só entre 10s e 2s); para outros modos até 40s antes
+    # Para ODD MASTER e 90-95: loop até 2s antes do close; safe/aggressive/etc.: até 40s antes (desde 2min ou 5min conforme mercado)
     if active_mode in ("odd_master", "90_95"):
         deadline_sec = ODD_MASTER_EARLY_EXIT  # 2s — assim o loop continua até faltar 2s; dentro do bloco checamos 2 <= secs <= 10
     else:
@@ -464,10 +465,10 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
             time.sleep(1)
             continue
 
-        # Modo 90-95: janela 10s–2s; usa spike e confiança, mas só dispara se o preço do lado escolhido estiver entre 80c e 95c
+        # Modo 90-95: janela 20s–2s; usa spike e confiança, mas só dispara se o preço do lado escolhido estiver entre 80c e 95c
         if active_mode == "90_95" and tokens and len(tokens) == 2 and event:
             secs = seconds_until_close(window_ts, window_sec)
-            # Só analisar e tentar entrar quando 2 <= secs <= 10 (desde 10s até 2s antes do close)
+            # Só analisar e tentar entrar quando 2 <= secs <= 20 (desde 20s até 2s antes do close)
             if secs > MODE_90_95_LAST_SEC:
                 time.sleep(1)
                 continue
@@ -861,7 +862,7 @@ def main():
     parser.add_argument("--safe-bet", type=float, metavar="USD", help="Modo safe: valor fixo em USD por entrada")
     parser.add_argument("--only-hedge-bet", type=float, metavar="USD", help="Modo only_hedge_plus: valor fixo em USD por entrada")
     parser.add_argument("--odd-master-bet", type=float, metavar="USD", help="Modo odd_master: valor fixo em USD por entrada")
-    parser.add_argument("--bet-90-95", type=float, metavar="USD", help="Modo 90-95: valor fixo em USD por entrada (últimos 10s, odd entre 90c e 95c)")
+    parser.add_argument("--bet-90-95", type=float, metavar="USD", help="Modo 90-95: valor fixo em USD por entrada (janela 20s–2s, odd 80–95c)")
     parser.add_argument("--arbitragem-pct", type=float, metavar="PCT", help="Modo arbitragem: %% da banca por entrada (ex: 25)")
     parser.add_argument("--once", action="store_true", help="Apenas um ciclo")
     parser.add_argument("--max-trades", type=int, help="Máximo de trades (dry-run)")
@@ -1045,7 +1046,7 @@ def main():
     if config.mode == "odd_master":
         print(f"ODD MASTER: entrada fixa ${config.fixed_bet_odd_master or config.min_bet:.2f} | últimos {ODD_MASTER_LAST_SEC}s, price-to-beat ±${ODD_MASTER_MAX_DIFF_USD:.0f}, maior odd", flush=True)
     if config.mode == "90_95":
-        print(f"90-95: entrada fixa ${config.fixed_bet_90_95 or config.min_bet:.2f} | janela 10s–2s p/ close, maior preço entre {MODE_90_95_MIN_ODD:.0%} e {MODE_90_95_MAX_ODD:.0%}", flush=True)
+        print(f"90-95: entrada fixa ${config.fixed_bet_90_95 or config.min_bet:.2f} | janela 20s–2s p/ close, maior preço entre {MODE_90_95_MIN_ODD:.0%} e {MODE_90_95_MAX_ODD:.0%}", flush=True)
     if config.mode == "arbitragem" and config.arbitragem_bet_pct is not None:
         print(f"Arbitragem: {config.arbitragem_bet_pct * 100:.0f}% da banca (via API) | Sem oportunidade = aposta normal", flush=True)
     if config.mode == "aggressive":

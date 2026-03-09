@@ -189,7 +189,7 @@
           </div>
           <div>
             <label class="block text-sm text-gray-400 mb-1">90-95 — valor fixo (USD)</label>
-            <input type="number" id="cfg-bet-90-95" step="0.01" min="0" placeholder="ex: 5" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" title="Últimos 10s, entra no lado de maior odd se estiver entre 90c e 95c" />
+            <input type="number" id="cfg-bet-90-95" step="0.01" min="0" placeholder="ex: 5" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" title="Janela 20s–2s, spike/confiança; preço do lado entre 80c e 95c" />
           </div>
           <div>
             <label class="block text-sm text-gray-400 mb-1">Arbitragem — % da banca</label>
@@ -268,7 +268,7 @@
               <option value="aggressive">Agressivo — % da banca</option>
               <option value="only_hedge_plus">Only Hedge+ — só entra com EV+</option>
               <option value="odd_master">ODD MASTER — últimos 10s, price-to-beat ±$10, maior odd</option>
-              <option value="90_95">90-95 — últimos 10s, maior odd entre 90c e 95c (aposta fixa)</option>
+              <option value="90_95">90-95 — janela 20s–2s, spike/confiança, preço 80–95c (aposta fixa)</option>
               <option value="dry_run">Dry run — simulação (sem ordens reais)</option>
               <option value="arbitragem">Arbitragem — % da banca</option>
             </select>
@@ -321,7 +321,7 @@
             <button type="button" id="btn-bot-start" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Iniciar</button>
             <button type="button" id="btn-bot-stop" class="px-4 py-2 bg-danger text-white font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Parar</button>
           </div>
-          <p class="text-xs text-muted">Entrada por <strong>Spike</strong> (salto de score + confiança mín. 48%), <strong>Confiança</strong> (por modo: Safe 72%, Aggressive 58%, Only Hedge+ 72%) ou <strong>T-5s</strong> (melhor sinal com confiança mín. 40%).</p>
+          <p class="text-xs text-muted">Entrada por <strong>Spike</strong> (salto de score + confiança mín. 40%), <strong>Confiança</strong> (por modo: Safe 72%, Aggressive 58%, Only Hedge+ 72%) ou <strong>T-5s</strong> (melhor sinal com confiança mín. 40%).</p>
         </div>
       </div>
       </div>

@@ -171,7 +171,7 @@ O sinal direcional é composto por 7 indicadores ponderados (ajustados para ser 
 6. **Volume Surge** (1,2) — Volume recente ≥2× o anterior
 7. **Tick Trend** (1,2) — Tendência em ticks (movimento ≥0,008% e consistência ≥65% ou ≤35%)
 
-Score positivo → Up, negativo → Down. Confiança = `min(|score|/MAX_SCORE, 1)`. Entrada por **Spike** (salto ≥2,5 + confiança ≥48%), **Confiança** (por modo) ou **T-5s** (confiança ≥40%).
+Score positivo → Up, negativo → Down. Confiança = `min(|score|/MAX_SCORE, 1)`. Entrada por **Spike** (salto ≥2,5 + confiança ≥40%), **Confiança** (por modo) ou **T-5s** (confiança ≥40%).
 
 **Arbitragem:** o bot primeiro verifica se comprar Up e Down ao mesmo tempo dá lucro garantido (soma dos preços ≤ 1 − `ARB_MIN_PROFIT_PCT`). Se sim, executa as duas pernas. Se não, aposta no lado do sinal de TA e tenta comprar o lado oposto a preço que dê lucro; se não achar, fica só com a aposta direcional.
 
