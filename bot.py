@@ -443,6 +443,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         deadline_sec = HARD_DEADLINE_T
 
     while int(time.time()) < close_time - deadline_sec:
+        price = get_price_by_market(market)
         # Modo ODD MASTER: entrar SOMENTE entre 10s e 2s antes do close; lado de MAIOR ODD = menor preço (centavos)
         if active_mode == "odd_master" and tokens and len(tokens) == 2 and event:
             secs = seconds_until_close(window_ts, window_sec)
@@ -487,7 +488,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         if active_mode == "moon":
             from api import get_cvd_by_market
 
-            current_price = price or candles[-1]["c"]
+            current_price = price or (candles[-1]["c"] if candles else None)
             if window_open and current_price:
                 delta_pct = (float(current_price) - float(window_open)) / float(window_open) * 100.0
                 cvd = get_cvd_by_market(market)
@@ -530,7 +531,6 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                 print(f"  [{market.upper()}] ARB PURA detectada: Up @ {price_up:.2f} + Down @ {price_down:.2f} = {price_up+price_down:.2f} (lucro garantido)", flush=True)
                 break
 
-        price = get_price_by_market(market)
         if price:
             tick_prices.append(price)
         # Candles 1m com volume: pelo menos MIN_CANDLES_FOR_FULL_TA para RSI, Volume Surge, Acceleration, Micro Momentum, EMA
