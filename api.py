@@ -10,6 +10,7 @@ import requests
 
 BINANCE_TICKER = "https://api.binance.com/api/v3/ticker/price"
 BINANCE_KLINE = "https://api.binance.com/api/v3/klines"
+BINANCE_TRADES = "https://api.binance.com/api/v3/trades"
 GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
 
 
@@ -101,6 +102,42 @@ def get_candles_by_market(market: str, limit: int = 30) -> list[dict]:
     if market == "eth":
         return get_eth_candles_1m(limit=limit)
     return get_btc_candles_1m(limit=limit)
+
+
+def get_cvd_by_market(market: str, limit: int = 500) -> float:
+    """
+    Calcula um snapshot de CVD (Cumulative Volume Delta) a partir dos últimos trades da Binance.
+
+    Usa /api/v3/trades (trades mais recentes). Para cada trade:
+    - se isBuyerMaker == True  -> comprador é maker, vendedor é agressor (bate no BID)  -> CVD -= qty
+    - se isBuyerMaker == False -> comprador é agressor (bate no ASK)                   -> CVD += qty
+    """
+    symbol = "BTCUSDT"
+    if market == "eth":
+        symbol = "ETHUSDT"
+    try:
+        limit = max(50, min(1000, int(limit)))
+        r = requests.get(
+            BINANCE_TRADES,
+            params={"symbol": symbol, "limit": limit},
+            timeout=5,
+        )
+        r.raise_for_status()
+        data = r.json()
+        cvd = 0.0
+        for t in data:
+            try:
+                qty = float(t.get("qty") or t.get("quantity") or 0.0)
+            except Exception:
+                qty = 0.0
+            is_buyer_maker = bool(t.get("isBuyerMaker"))
+            if is_buyer_maker:
+                cvd -= qty
+            else:
+                cvd += qty
+        return cvd
+    except Exception:
+        return 0.0
 
 
 def get_window_resolution_binance(window_start_ts: int) -> Optional[bool]:

@@ -266,6 +266,7 @@
             <select id="bot-mode" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2">
               <option value="safe">Safe — aposta fixa em USD</option>
               <option value="spike_ai">SPIKE AI — safe + aprovação da IA (Ollama)</option>
+              <option value="moon">MOON — CVD (divergência + momentum) com mão fixa safe</option>
               <option value="aggressive">Agressivo — % da banca</option>
               <option value="only_hedge_plus">Only Hedge+ — só entra com EV+</option>
               <option value="odd_master">ODD MASTER — últimos 10s, price-to-beat ±$10, maior odd</option>
@@ -637,7 +638,7 @@
         if (c.aggressive_bet_pct != null) getEl('bot-aggressive-pct').value = c.aggressive_bet_pct;
         // Sincronizar dropdown "Modo" do Iniciar com a config salva (evita iniciar em safe sem querer)
         const modeEl = getEl('bot-mode');
-        if (c.bot_mode && ['safe','spike_ai','aggressive','only_hedge_plus','dry_run','arbitragem','odd_master','90_95'].includes(c.bot_mode)) {
+        if (c.bot_mode && ['safe','spike_ai','moon','aggressive','only_hedge_plus','dry_run','arbitragem','odd_master','90_95'].includes(c.bot_mode)) {
           modeEl.value = c.bot_mode;
         } else {
           modeEl.value = 'safe';
@@ -850,7 +851,7 @@
     const botMode = getEl('bot-mode');
     function updateBotModeUi() {
       const v = botMode.value;
-      getEl('wrap-safe-bet').classList.toggle('hidden', !['safe','spike_ai'].includes(v));
+      getEl('wrap-safe-bet').classList.toggle('hidden', !['safe','spike_ai','moon'].includes(v));
       getEl('wrap-aggressive-pct').classList.toggle('hidden', v !== 'aggressive');
       getEl('wrap-only-hedge-bet').classList.toggle('hidden', v !== 'only_hedge_plus');
       getEl('wrap-odd-master-bet').classList.toggle('hidden', v !== 'odd_master');
@@ -923,7 +924,7 @@
         dry_run: mode === 'dry_run' || dryRun,
         markets: markets
       };
-      if (mode === 'safe' || mode === 'spike_ai') {
+      if (mode === 'safe' || mode === 'spike_ai' || mode === 'moon') {
         const v = parseFloat(getEl('bot-safe-bet').value);
         body.safe_bet = (!isNaN(v) && v > 0) ? v : 5;
       }

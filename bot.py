@@ -42,6 +42,7 @@ def _parse_markets() -> list[str]:
 MODES = {
     "safe": {"min_confidence": 0.72},
     "spike_ai": {"min_confidence": 0.72},  # Igual ao safe, mas com gate de IA (Ollama) antes de executar
+    "moon": {},  # Estratégia MOON: CVD (divergência + momentum) com mão fixa safe
     "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.58},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
@@ -482,6 +483,40 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
             # Dentro da janela: segue para TA (analyze, spike, confiança)
             print(f"  [{market.upper()}] 90-95: janela ativa ({secs}s para close), analisando...", flush=True)
 
+        # Modo MOON: estratégia baseada em CVD (divergência + momentum)
+        if active_mode == "moon":
+            from api import get_cvd_by_market
+
+            current_price = price or candles[-1]["c"]
+            if window_open and current_price:
+                delta_pct = (float(current_price) - float(window_open)) / float(window_open) * 100.0
+                cvd = get_cvd_by_market(market)
+                signal = None
+                reason = ""
+                # Divergência bullish: preço caiu >= -0.02% e CVD > +10
+                if delta_pct <= -0.02 and cvd > 10:
+                    signal = "up"
+                    reason = f"Divergência bullish: preço {delta_pct:.3f}% e CVD {cvd:.1f}"
+                # Divergência bearish: preço subiu >= +0.02% e CVD < -10
+                elif delta_pct >= 0.02 and cvd < -10:
+                    signal = "down"
+                    reason = f"Divergência bearish: preço {delta_pct:.3f}% e CVD {cvd:.1f}"
+                # Momentum bullish: preço subiu > +0.05% e CVD > +20
+                elif delta_pct > 0.05 and cvd > 20:
+                    signal = "up"
+                    reason = f"Momentum bullish: preço {delta_pct:.3f}% e CVD {cvd:.1f}"
+                # Momentum bearish: preço caiu < -0.05% e CVD < -20
+                elif delta_pct < -0.05 and cvd < -20:
+                    signal = "down"
+                    reason = f"Momentum bearish: preço {delta_pct:.3f}% e CVD {cvd:.1f}"
+
+                if signal is not None:
+                    trade_direction = signal
+                    final_result = None
+                    fired = True
+                    print(f"  [{market.upper()}] MOON: {signal.upper()} | {reason}", flush=True)
+                    break
+
         # Modo arbitragem: prioridade para arb pura a cada iteração (Up+Down < 1-margem)
         if active_mode == "arbitragem" and tokens and len(tokens) == 2 and event:
             from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
@@ -715,9 +750,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         except (ValueError, TypeError):
             pass
 
-    if active_mode == "safe" and config.fixed_bet_safe is not None:
-        bet_size = config.fixed_bet_safe
-    elif active_mode == "spike_ai" and config.fixed_bet_safe is not None:
+    if active_mode in ("safe", "spike_ai", "moon") and config.fixed_bet_safe is not None:
         bet_size = config.fixed_bet_safe
     elif active_mode == "only_hedge_plus":
         bet_size = config.fixed_bet_only_hedge if config.fixed_bet_only_hedge is not None else config.min_bet
@@ -965,7 +998,7 @@ def main():
     global FROZEN_MODE
     parser = argparse.ArgumentParser(description="Polymarket BTC 5-Min Up/Down Bot")
     parser.add_argument("--dry-run", action="store_true", help="Simular sem ordens reais")
-    parser.add_argument("--mode", choices=["safe", "spike_ai", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master", "90_95"], help="Modo de trading")
+    parser.add_argument("--mode", choices=["safe", "spike_ai", "moon", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master", "90_95"], help="Modo de trading")
     parser.add_argument("--safe-bet", type=float, metavar="USD", help="Modo safe: valor fixo em USD por entrada")
     parser.add_argument("--only-hedge-bet", type=float, metavar="USD", help="Modo only_hedge_plus: valor fixo em USD por entrada")
     parser.add_argument("--odd-master-bet", type=float, metavar="USD", help="Modo odd_master: valor fixo em USD por entrada")
@@ -1086,7 +1119,7 @@ def main():
                 print("90-95 exige valor. Use --bet-90-95 5.0 ou BET_90_95 no env.", flush=True, file=sys.stderr)
                 sys.exit(1)
 
-    if config.mode in ("safe", "spike_ai"):
+    if config.mode in ("safe", "spike_ai", "moon"):
         if args.safe_bet is not None:
             v = args.safe_bet
             if v < config.min_bet:
@@ -1096,7 +1129,7 @@ def main():
         elif sys.stdin.isatty() and sys.stderr.isatty():
             while True:
                 try:
-                    label = "Modo safe" if config.mode == "safe" else "Modo SPIKE AI"
+                    label = "Modo safe" if config.mode == "safe" else ("Modo SPIKE AI" if config.mode == "spike_ai" else "Modo MOON")
                     print(f"{label}: valor fixo em USD [min ${config.min_bet:.2f}]: ", end="", flush=True, file=sys.stderr)
                     s = input().strip()
                     if not s:
@@ -1109,7 +1142,7 @@ def main():
                 except ValueError:
                     pass
         else:
-            print("Modo safe/SPIKE AI exige valor. Use --safe-bet 5.0", flush=True, file=sys.stderr)
+            print("Modo safe/SPIKE AI/MOON exige valor. Use --safe-bet 5.0", flush=True, file=sys.stderr)
             sys.exit(1)
 
     if config.mode == "arbitragem":
@@ -1151,6 +1184,8 @@ def main():
         print(f"Entrada fixa (safe): ${config.fixed_bet_safe:.2f}", flush=True)
     if config.mode == "spike_ai" and config.fixed_bet_safe is not None:
         print(f"SPIKE AI: igual ao safe + gate de IA (Ollama) | entrada fixa ${config.fixed_bet_safe:.2f} | AI_MIN_CONFIDENCE={AI_MIN_CONFIDENCE:.0%}", flush=True)
+    if config.mode == "moon" and config.fixed_bet_safe is not None:
+        print(f"MOON: estratégia CVD (divergência + momentum) com mão fixa safe | entrada fixa ${config.fixed_bet_safe:.2f}", flush=True)
     if config.mode == "only_hedge_plus":
         print(f"Only Hedge+: entrada fixa ${config.fixed_bet_only_hedge or config.min_bet:.2f} | só entra com EV+", flush=True)
     if config.mode == "odd_master":
