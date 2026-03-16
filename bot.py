@@ -322,6 +322,8 @@ def place_fok_order(client, token_id: str, amount_usd: float) -> bool:
         return resp.get("status") in ("matched", "live")
     except Exception as e:
         print(f"  FOK order error: {e!s}", flush=True)
+        if "Request exception" in str(e):
+            raise
         return False
 
 
@@ -344,6 +346,8 @@ def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
         return resp.get("status") in ("live", "matched")
     except Exception as e:
         print(f"  Limit order error: {e!s}", flush=True)
+        if "Request exception" in str(e):
+            raise
         return False
 
 
@@ -895,46 +899,53 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     arb_first_one_fill = False
     arb_shares = None
 
-    if active_mode == "arbitragem" and tokens and len(tokens) == 2:
-        price_up = get_token_price(tokens[0], "BUY")
-        price_down = get_token_price(tokens[1], "BUY")
-        if (price_up is not None and price_down is not None
-                and 0 < price_up < 1 and 0 < price_down < 1
-                and (price_up + price_down) <= (1.0 - ARB_MIN_PROFIT_PCT)):
-            amount_up = bet_size * price_up / (price_up + price_down)
-            amount_down = bet_size * price_down / (price_up + price_down)
-            if amount_up >= POLY_MIN_ORDER_USD and amount_down >= POLY_MIN_ORDER_USD:
-                ok1 = place_fok_order(client, tokens[0], amount_up) or place_limit_order(client, tokens[0], amount_up)
-                ok2 = place_fok_order(client, tokens[1], amount_down) or place_limit_order(client, tokens[1], amount_down)
-                if ok1 and ok2:
-                    print(f"  [{market.upper()}] ARB PURA: Up @ ${price_up:.2f} + Down @ ${price_down:.2f} | executado", flush=True)
-                    _last_bet_window_by_market[market] = window_ts
-                    return True
-                if ok1 and not ok2:
-                    ok = True
-                    real_price = price_up
-                    token_id = tokens[0]
-                    arb_first_one_fill = True
-                    arb_shares = bet_size / (price_up + price_down)
-                    trade_direction = "up"
-            else:
-                print(f"  [{market.upper()}] Arb: cada perna precisa >= ${POLY_MIN_ORDER_USD:.2f} (Up ${amount_up:.2f} / Down ${amount_down:.2f}). Aumente a aposta.", flush=True)
-                if trade_direction == "arb_pura":
-                    return False
-        elif trade_direction == "arb_pura":
-            print(f"  [{market.upper()}] Arb sumiu ao executar (soma > {1.0 - ARB_MIN_PROFIT_PCT:.0%}), pulando.", flush=True)
-            return False
+    try:
+        if active_mode == "arbitragem" and tokens and len(tokens) == 2:
+            price_up = get_token_price(tokens[0], "BUY")
+            price_down = get_token_price(tokens[1], "BUY")
+            if (price_up is not None and price_down is not None
+                    and 0 < price_up < 1 and 0 < price_down < 1
+                    and (price_up + price_down) <= (1.0 - ARB_MIN_PROFIT_PCT)):
+                amount_up = bet_size * price_up / (price_up + price_down)
+                amount_down = bet_size * price_down / (price_up + price_down)
+                if amount_up >= POLY_MIN_ORDER_USD and amount_down >= POLY_MIN_ORDER_USD:
+                    ok1 = place_fok_order(client, tokens[0], amount_up) or place_limit_order(client, tokens[0], amount_up)
+                    ok2 = place_fok_order(client, tokens[1], amount_down) or place_limit_order(client, tokens[1], amount_down)
+                    if ok1 and ok2:
+                        print(f"  [{market.upper()}] ARB PURA: Up @ ${price_up:.2f} + Down @ ${price_down:.2f} | executado", flush=True)
+                        _last_bet_window_by_market[market] = window_ts
+                        return True
+                    if ok1 and not ok2:
+                        ok = True
+                        real_price = price_up
+                        token_id = tokens[0]
+                        arb_first_one_fill = True
+                        arb_shares = bet_size / (price_up + price_down)
+                        trade_direction = "up"
+                else:
+                    print(f"  [{market.upper()}] Arb: cada perna precisa >= ${POLY_MIN_ORDER_USD:.2f} (Up ${amount_up:.2f} / Down ${amount_down:.2f}). Aumente a aposta.", flush=True)
+                    if trade_direction == "arb_pura":
+                        return False
+            elif trade_direction == "arb_pura":
+                print(f"  [{market.upper()}] Arb sumiu ao executar (soma > {1.0 - ARB_MIN_PROFIT_PCT:.0%}), pulando.", flush=True)
+                return False
 
-    if not ok and trade_direction != "arb_pura":
-        for _ in range(ORDER_MAX_FOK_RETRIES):
-            if int(time.time()) >= close_time:
-                break
-            ok = place_fok_order(client, token_id, bet_size)
-            if ok:
-                break
-            time.sleep(ORDER_RETRY_INTERVAL)
-        if not ok:
-            ok = place_limit_order(client, token_id, bet_size)
+        if not ok and trade_direction != "arb_pura":
+            for _ in range(ORDER_MAX_FOK_RETRIES):
+                if int(time.time()) >= close_time:
+                    break
+                ok = place_fok_order(client, token_id, bet_size)
+                if ok:
+                    break
+                time.sleep(ORDER_RETRY_INTERVAL)
+            if not ok:
+                ok = place_limit_order(client, token_id, bet_size)
+    except Exception as e:
+        if "Request exception" in str(e):
+            print(f"  [{market.upper()}] Erro de requisição na ordem; evitando novas tentativas nesta janela.", flush=True)
+            _last_bet_window_by_market[market] = window_ts
+            return False
+        raise
 
     if ok:
         print(f"  [{market.upper()}] Ordem executada: {trade_direction.upper()} ${bet_size:.2f}", flush=True)
