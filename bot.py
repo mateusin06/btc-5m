@@ -41,6 +41,7 @@ def _parse_markets() -> list[str]:
 # Configurações de modos (confiança mínima mais assertiva para reduzir entradas ruins de dia)
 MODES = {
     "safe": {"min_confidence": 0.72},
+    "spike_ai": {"min_confidence": 0.72},  # Igual ao safe, mas com gate de IA (Ollama) antes de executar
     "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.58},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
@@ -72,6 +73,8 @@ TA_POLL_INTERVAL = 2
 SPIKE_THRESHOLD = 2.2   # Salto mínimo de score para spike (mais assertivo; evita ruído de dia)
 SPIKE_MIN_CONFIDENCE = 0.35  # Spike só dispara se confiança >= 35%
 T5S_MIN_CONFIDENCE = 0.30   # T-5s só dispara se melhor sinal tiver confiança >= 40%
+AI_MIN_CONFIDENCE = float(os.getenv("AI_MIN_CONFIDENCE", "0.60"))
+AI_COOLDOWN_SEC = float(os.getenv("AI_COOLDOWN_SEC", "3.0"))
 ORDER_RETRY_INTERVAL = 3
 ORDER_MAX_FOK_RETRIES = 5  # Limite de retentativas FOK para não bloquear outros mercados (ex: ETH)
 MIN_SHARES = 5
@@ -430,6 +433,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     fired = False
     trade_direction = None
     final_result = None
+    ai_denied_until = 0.0
 
     # Para ODD MASTER e 90-95: loop até 2s antes do close; safe/aggressive/etc.: até 40s antes (desde 2min ou 5min conforme mercado)
     if active_mode in ("odd_master", "90_95"):
@@ -537,9 +541,40 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                     else:
                         print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction} (sem EV+, continuando)", flush=True)
                 else:
-                    fired = True
-                    print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction}", flush=True)
-                    break
+                    if active_mode == "spike_ai":
+                        if time.time() < ai_denied_until:
+                            pass
+                        else:
+                            from ai import ask_ollama_trade_gate
+                            from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
+
+                            secs_to_close = seconds_until_close(window_ts, window_sec)
+                            tok_price = None
+                            if tokens and len(tokens) == 2 and event:
+                                tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
+
+                            decision = ask_ollama_trade_gate(
+                                market=market,
+                                side=trade_direction,
+                                seconds_to_close=secs_to_close,
+                                token_price=tok_price,
+                                ta_details=getattr(result, "details", {}) or {},
+                                score=result.score,
+                                confidence=result.confidence,
+                                window_open=window_open,
+                                current_price=(price or candles[-1]["c"]),
+                                mode=active_mode,
+                            )
+                            if decision.allow and decision.confidence >= AI_MIN_CONFIDENCE:
+                                fired = True
+                                print(f"  [{market.upper()}] SPIKE AI: aprovado ({decision.confidence:.0%}) -> {trade_direction.upper()} | {decision.reason}", flush=True)
+                                break
+                            ai_denied_until = time.time() + AI_COOLDOWN_SEC
+                            print(f"  [{market.upper()}] SPIKE AI: negado ({decision.confidence:.0%}) -> {trade_direction.upper()} | {decision.reason}", flush=True)
+                    else:
+                        fired = True
+                        print(f"  [{market.upper()}] SPIKE! Score {result.score:.2f} -> {result.direction}", flush=True)
+                        break
             else:
                 print(f"  [{market.upper()}] SPIKE ignorado (confiança {result.confidence:.1%} < {SPIKE_MIN_CONFIDENCE:.0%})", flush=True)
 
@@ -555,9 +590,40 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                 else:
                     print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction} (sem EV+, continuando)", flush=True)
             else:
-                fired = True
-                print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction}", flush=True)
-                break
+                if active_mode == "spike_ai":
+                    if time.time() < ai_denied_until:
+                        pass
+                    else:
+                        from ai import ask_ollama_trade_gate
+                        from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
+
+                        secs_to_close = seconds_until_close(window_ts, window_sec)
+                        tok_price = None
+                        if tokens and len(tokens) == 2 and event:
+                            tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
+
+                        decision = ask_ollama_trade_gate(
+                            market=market,
+                            side=trade_direction,
+                            seconds_to_close=secs_to_close,
+                            token_price=tok_price,
+                            ta_details=getattr(result, "details", {}) or {},
+                            score=result.score,
+                            confidence=result.confidence,
+                            window_open=window_open,
+                            current_price=(price or candles[-1]["c"]),
+                            mode=active_mode,
+                        )
+                        if decision.allow and decision.confidence >= AI_MIN_CONFIDENCE:
+                            fired = True
+                            print(f"  [{market.upper()}] SPIKE AI: aprovado ({decision.confidence:.0%}) -> {trade_direction.upper()} | {decision.reason}", flush=True)
+                            break
+                        ai_denied_until = time.time() + AI_COOLDOWN_SEC
+                        print(f"  [{market.upper()}] SPIKE AI: negado ({decision.confidence:.0%}) -> {trade_direction.upper()} | {decision.reason}", flush=True)
+                else:
+                    fired = True
+                    print(f"  [{market.upper()}] Confiança {result.confidence:.1%} -> {result.direction}", flush=True)
+                    break
 
         prev_score = result.score
         poll = ARB_POLL_INTERVAL if active_mode == "arbitragem" else (1 if active_mode == "90_95" else TA_POLL_INTERVAL)
@@ -579,6 +645,32 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         elif active_mode == "90_95":
             # 90-95 não usa T-5s (apenas filtros janela + 80–95c)
             pass
+        elif active_mode == "spike_ai":
+            from ai import ask_ollama_trade_gate
+            from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
+
+            secs_to_close = seconds_until_close(window_ts, window_sec)
+            tok_price = None
+            if tokens and len(tokens) == 2 and event:
+                tok_price = (_get_tok(tokens[0], "BUY") or _get_ev(event, "up")) if trade_direction == "up" else (_get_tok(tokens[1], "BUY") or _get_ev(event, "down"))
+
+            decision = ask_ollama_trade_gate(
+                market=market,
+                side=trade_direction,
+                seconds_to_close=secs_to_close,
+                token_price=tok_price,
+                ta_details=getattr(best_result, "details", {}) or {},
+                score=best_score,
+                confidence=best_result.confidence,
+                window_open=window_open,
+                current_price=(price or candles[-1]["c"]),
+                mode=active_mode,
+            )
+            if decision.allow and decision.confidence >= AI_MIN_CONFIDENCE:
+                fired = True
+                print(f"  [{market.upper()}] T-5s SPIKE AI: aprovado ({decision.confidence:.0%}) -> {trade_direction.upper()} | {decision.reason}", flush=True)
+            else:
+                print(f"  [{market.upper()}] T-5s SPIKE AI: negado ({decision.confidence:.0%}) -> {trade_direction.upper()} | {decision.reason}", flush=True)
         else:
             fired = True
             print(f"  [{market.upper()}] T-5s: melhor sinal -> {trade_direction} (score {best_score:.2f})", flush=True)
@@ -624,6 +716,8 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
             pass
 
     if active_mode == "safe" and config.fixed_bet_safe is not None:
+        bet_size = config.fixed_bet_safe
+    elif active_mode == "spike_ai" and config.fixed_bet_safe is not None:
         bet_size = config.fixed_bet_safe
     elif active_mode == "only_hedge_plus":
         bet_size = config.fixed_bet_only_hedge if config.fixed_bet_only_hedge is not None else config.min_bet
@@ -871,7 +965,7 @@ def main():
     global FROZEN_MODE
     parser = argparse.ArgumentParser(description="Polymarket BTC 5-Min Up/Down Bot")
     parser.add_argument("--dry-run", action="store_true", help="Simular sem ordens reais")
-    parser.add_argument("--mode", choices=["safe", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master", "90_95"], help="Modo de trading")
+    parser.add_argument("--mode", choices=["safe", "spike_ai", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master", "90_95"], help="Modo de trading")
     parser.add_argument("--safe-bet", type=float, metavar="USD", help="Modo safe: valor fixo em USD por entrada")
     parser.add_argument("--only-hedge-bet", type=float, metavar="USD", help="Modo only_hedge_plus: valor fixo em USD por entrada")
     parser.add_argument("--odd-master-bet", type=float, metavar="USD", help="Modo odd_master: valor fixo em USD por entrada")
@@ -992,7 +1086,7 @@ def main():
                 print("90-95 exige valor. Use --bet-90-95 5.0 ou BET_90_95 no env.", flush=True, file=sys.stderr)
                 sys.exit(1)
 
-    if config.mode == "safe":
+    if config.mode in ("safe", "spike_ai"):
         if args.safe_bet is not None:
             v = args.safe_bet
             if v < config.min_bet:
@@ -1002,7 +1096,8 @@ def main():
         elif sys.stdin.isatty() and sys.stderr.isatty():
             while True:
                 try:
-                    print(f"Modo safe: valor fixo em USD [min ${config.min_bet:.2f}]: ", end="", flush=True, file=sys.stderr)
+                    label = "Modo safe" if config.mode == "safe" else "Modo SPIKE AI"
+                    print(f"{label}: valor fixo em USD [min ${config.min_bet:.2f}]: ", end="", flush=True, file=sys.stderr)
                     s = input().strip()
                     if not s:
                         continue
@@ -1014,7 +1109,7 @@ def main():
                 except ValueError:
                     pass
         else:
-            print("Modo safe exige valor. Use --safe-bet 5.0", flush=True, file=sys.stderr)
+            print("Modo safe/SPIKE AI exige valor. Use --safe-bet 5.0", flush=True, file=sys.stderr)
             sys.exit(1)
 
     if config.mode == "arbitragem":
@@ -1054,6 +1149,8 @@ def main():
     print(f"Estratégias assertivas: Spike salto>={SPIKE_THRESHOLD} + conf>={SPIKE_MIN_CONFIDENCE:.0%} | Confiança por modo | T-5s conf>={T5S_MIN_CONFIDENCE:.0%}", flush=True)
     if config.mode == "safe" and config.fixed_bet_safe is not None:
         print(f"Entrada fixa (safe): ${config.fixed_bet_safe:.2f}", flush=True)
+    if config.mode == "spike_ai" and config.fixed_bet_safe is not None:
+        print(f"SPIKE AI: igual ao safe + gate de IA (Ollama) | entrada fixa ${config.fixed_bet_safe:.2f} | AI_MIN_CONFIDENCE={AI_MIN_CONFIDENCE:.0%}", flush=True)
     if config.mode == "only_hedge_plus":
         print(f"Only Hedge+: entrada fixa ${config.fixed_bet_only_hedge or config.min_bet:.2f} | só entra com EV+", flush=True)
     if config.mode == "odd_master":

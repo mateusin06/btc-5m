@@ -323,7 +323,7 @@ class ConfigUpdate(BaseModel):
     api_passphrase: Optional[str] = None
     starting_bankroll: Optional[float] = None
     min_bet: Optional[float] = None
-    bot_mode: Optional[Literal["safe", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master", "90_95"]] = None
+    bot_mode: Optional[Literal["safe", "spike_ai", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master", "90_95"]] = None
     aggressive_bet_pct: Optional[float] = None
     max_token_price: Optional[float] = None
     arb_min_profit_pct: Optional[float] = None
@@ -362,7 +362,7 @@ class ConfigResponse(BaseModel):
 
 
 class BotStartRequest(BaseModel):
-    mode: Literal["safe", "aggressive", "dry_run", "arbitragem", "only_hedge_plus", "odd_master", "90_95"] = Field(..., description="Modo de trading")
+    mode: Literal["safe", "spike_ai", "aggressive", "dry_run", "arbitragem", "only_hedge_plus", "odd_master", "90_95"] = Field(..., description="Modo de trading")
     dry_run: bool = Field(False, description="Se True, simula sem ordens reais")
     markets: List[Literal["btc", "eth", "btc15m"]] = Field(default=["btc"], description="Mercados: btc, eth, btc15m (lista)")
     safe_bet: Optional[float] = None
@@ -780,12 +780,12 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     # Em operação real, validar parâmetros obrigatórios por modo
     if not dry_run:
         min_bet = float(row.get("min_bet", 5))
-        if mode == "safe":
+        if mode in ("safe", "spike_ai"):
             safe_bet = req.safe_bet if req.safe_bet is not None else (row.get("safe_bet") and float(row["safe_bet"]))
             if safe_bet is None or safe_bet < min_bet:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Modo Safe exige valor de aposta (Config ou envio). Mínimo: ${min_bet:.2f}.",
+                    detail=f"Modo Safe/SPIKE AI exige valor de aposta (Config ou envio). Mínimo: ${min_bet:.2f}.",
                 )
         if mode == "only_hedge_plus":
             oh_bet = req.only_hedge_bet if req.only_hedge_bet is not None else (row.get("only_hedge_bet") and float(row["only_hedge_bet"]))
@@ -862,7 +862,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     # Atualizar Supabase com o modo (e parâmetros) usados ao iniciar — assim bot_mode fica sincronizado
     try:
         start_config: dict = {"bot_mode": mode}
-        if mode == "safe" and (req.safe_bet is not None or (row.get("safe_bet") and float(row["safe_bet"]))):
+        if mode in ("safe", "spike_ai") and (req.safe_bet is not None or (row.get("safe_bet") and float(row["safe_bet"]))):
             start_config["safe_bet"] = req.safe_bet if req.safe_bet is not None else float(row["safe_bet"])
         if mode == "aggressive":
             start_config["aggressive_bet_pct"] = int(round(pct_aggressive))
@@ -881,7 +881,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     cmd = [sys.executable, str(PROJECT_ROOT / "bot.py"), "--mode", mode, "--markets", ",".join(markets_list)]
     if dry_run:
         cmd.append("--dry-run")
-    if mode == "safe":
+    if mode in ("safe", "spike_ai"):
         safe_bet_val = req.safe_bet if req.safe_bet is not None else (float(row["safe_bet"]) if row.get("safe_bet") else None)
         if safe_bet_val is not None:
             cmd.extend(["--safe-bet", str(round(safe_bet_val, 2))])
@@ -909,7 +909,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         extra = ""
         if mode == "aggressive":
             extra = f" aggressive_pct={pct_aggressive}%"
-        elif mode == "safe" and (req.safe_bet is not None or (row.get("safe_bet") and float(row["safe_bet"]))):
+        elif mode in ("safe", "spike_ai") and (req.safe_bet is not None or (row.get("safe_bet") and float(row["safe_bet"]))):
             bet = req.safe_bet if req.safe_bet is not None else float(row["safe_bet"])
             extra = f" safe_bet=${bet:.2f}"
         elif mode == "only_hedge_plus" and (req.only_hedge_bet is not None or (row.get("only_hedge_bet") and float(row["only_hedge_bet"]))):
