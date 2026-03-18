@@ -27,7 +27,7 @@ def _parse_markets() -> list[str]:
     if not v:
         return []
     if "," in v:
-        out = [m.strip().lower() for m in v.split(",") if m.strip() in ("btc", "eth", "btc15m")]
+        out = [m.strip().lower() for m in v.split(",") if m.strip() in ("btc", "eth", "btc15m", "eth15m")]
         return out if out else []
     if v == "both":
         return ["btc", "eth"]
@@ -35,6 +35,8 @@ def _parse_markets() -> list[str]:
         return ["eth"]
     if v == "btc15m":
         return ["btc15m"]
+    if v == "eth15m":
+        return ["eth15m"]
     if v == "btc":
         return ["btc"]
     return []
@@ -47,6 +49,7 @@ MODES = {
     "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.58},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
+    "arb_kalshi": {},
     "only_hedge_plus": {"min_confidence": 0.72},
     "odd_master": {},  # Estratégia própria: últimos 10s, price-to-beat dentro de $10, maior odd
     "90_95": {"min_confidence": 0.55},  # Usa spike e confiança; só entra se preço do lado estiver entre 80c e 95c
@@ -69,6 +72,8 @@ MOON_MIN_VOLATILITY_PCT = 0.02    # MOON: volatilidade mínima (%) nos últimos 
 MOON_CVD_NORM_MIN = 0.08          # MOON: CVD normalizado mínimo (|cvd|/vol)
 MOON_CVD_MOMENTUM_MIN = 0.03      # MOON: momentum mínimo do CVD normalizado
 MOON_CVD_TRADE_LIMIT = 500        # MOON: trades recentes usados para CVD
+ARB_KALSHI_MIN_PROFIT_PCT = 0.03  # Arb Kalshi: lucro mínimo (3%)
+ARB_KALSHI_POLL_INTERVAL = 2
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -359,6 +364,218 @@ def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
         return False
 
 
+def _kalshi_best_ask(orderbook: dict, side: str) -> tuple[Optional[float], Optional[int]]:
+    """Retorna (best_ask_price, max_count) para compra de YES/NO em Kalshi."""
+    levels = (orderbook.get("orderbook_fp") or {})
+    yes_bids = levels.get("yes_dollars") or []
+    no_bids = levels.get("no_dollars") or []
+    if side == "yes":
+        if not no_bids:
+            return (None, None)
+        best_no_bid = max(no_bids, key=lambda x: float(x[0]))
+        price = 1.0 - float(best_no_bid[0])
+        size = int(float(best_no_bid[1]))
+        return (max(price, 0.01), max(size, 0))
+    if not yes_bids:
+        return (None, None)
+    best_yes_bid = max(yes_bids, key=lambda x: float(x[0]))
+    price = 1.0 - float(best_yes_bid[0])
+    size = int(float(best_yes_bid[1]))
+    return (max(price, 0.01), max(size, 0))
+
+
+def _find_kalshi_15m_market(api_key_id: str, private_key_pem: str, market: str, target_close_ts: int) -> Optional[dict]:
+    """Encontra o market aberto da Kalshi mais próximo do fechamento da janela 15m."""
+    try:
+        from kalshi_api import get_markets
+        from datetime import datetime, timezone
+    except Exception:
+        return None
+    keyword = "BTC" if market.startswith("btc") else "ETH"
+    alt_keyword = "Bitcoin" if keyword == "BTC" else "Ethereum"
+    best = None
+    best_diff = None
+    cursor = ""
+    for _ in range(5):
+        data = get_markets(api_key_id, private_key_pem, status="open", limit=200, cursor=cursor)
+        markets = data.get("markets") or []
+        for m in markets:
+            title = (m.get("title") or "") + " " + (m.get("subtitle") or "")
+            if keyword not in title and alt_keyword not in title:
+                continue
+            if "15" not in title or ("min" not in title and "minute" not in title):
+                continue
+            close_str = m.get("close_time") or ""
+            if not close_str:
+                continue
+            try:
+                close_dt = datetime.fromisoformat(close_str.replace("Z", "+00:00"))
+            except Exception:
+                continue
+            close_ts = int(close_dt.replace(tzinfo=timezone.utc).timestamp())
+            diff = abs(close_ts - target_close_ts)
+            if best is None or diff < (best_diff or diff + 1):
+                best = m
+                best_diff = diff
+        cursor = data.get("cursor") or ""
+        if not cursor:
+            break
+    if best_diff is not None and best_diff <= 120:
+        return best
+    return None
+
+
+def _run_kalshi_arb_cycle(config: Config, market: str, window_ts: int, close_time: int, slug: str) -> bool:
+    """Arbitragem Polymarket vs Kalshi (BTC/ETH 15m)."""
+    from api import get_market_by_slug, extract_token_ids, get_token_price, get_token_price_from_event
+    api_key_id = (os.getenv("KALSHI_API_KEY_ID") or "").strip()
+    private_key_pem = (os.getenv("KALSHI_PRIVATE_KEY_PEM") or "").strip()
+    if not api_key_id or not private_key_pem:
+        print(f"  [{market.upper()}] Arb Kalshi: credenciais Kalshi ausentes.", flush=True)
+        return False
+
+    event = get_market_by_slug(slug)
+    tokens = extract_token_ids(event) if event else None
+    if not tokens or len(tokens) < 2:
+        print(f"  [{market.upper()}] Arb Kalshi: mercado Polymarket não encontrado.", flush=True)
+        return False
+
+    kalshi_market = _find_kalshi_15m_market(api_key_id, private_key_pem, market, close_time)
+    if not kalshi_market:
+        print(f"  [{market.upper()}] Arb Kalshi: market 15m não encontrado na Kalshi.", flush=True)
+        return False
+    kalshi_ticker = kalshi_market.get("ticker")
+
+    try:
+        from kalshi_api import get_balance as kalshi_get_balance, get_orderbook, create_order
+    except Exception as e:
+        print(f"  [{market.upper()}] Arb Kalshi: erro ao carregar módulo Kalshi: {e!s}", flush=True)
+        return False
+
+    while int(time.time()) < close_time - HARD_DEADLINE_T:
+        # Preços Polymarket
+        price_up = get_token_price(tokens[0], "BUY") or (get_token_price_from_event(event, "up") if event else None)
+        price_down = get_token_price(tokens[1], "BUY") or (get_token_price_from_event(event, "down") if event else None)
+        if price_up is None or price_down is None:
+            time.sleep(ARB_KALSHI_POLL_INTERVAL)
+            continue
+
+        # Orderbook Kalshi
+        try:
+            orderbook = get_orderbook(api_key_id, private_key_pem, kalshi_ticker, depth=1)
+        except Exception:
+            time.sleep(ARB_KALSHI_POLL_INTERVAL)
+            continue
+
+        k_yes_ask, k_yes_size = _kalshi_best_ask(orderbook, "yes")
+        k_no_ask, k_no_size = _kalshi_best_ask(orderbook, "no")
+        if k_yes_ask is None or k_no_ask is None:
+            time.sleep(ARB_KALSHI_POLL_INTERVAL)
+            continue
+
+        # Cenários de arbitragem
+        cand1_cost = float(price_up) + float(k_no_ask)   # YES Poly + NO Kalshi
+        cand2_cost = float(price_down) + float(k_yes_ask)  # NO Poly + YES Kalshi
+        best = None
+        if cand1_cost <= (1.0 - ARB_KALSHI_MIN_PROFIT_PCT):
+            best = ("up", "no", float(price_up), float(k_no_ask), k_no_size)
+        if cand2_cost <= (1.0 - ARB_KALSHI_MIN_PROFIT_PCT):
+            if best is None or cand2_cost < cand1_cost:
+                best = ("down", "yes", float(price_down), float(k_yes_ask), k_yes_size)
+        if not best:
+            time.sleep(ARB_KALSHI_POLL_INTERVAL)
+            continue
+
+        trade_direction, kalshi_side, poly_price, kalshi_price, kalshi_size = best
+        total_cost = poly_price + kalshi_price
+        if total_cost <= 0:
+            time.sleep(ARB_KALSHI_POLL_INTERVAL)
+            continue
+
+        # Saldos
+        api_bankroll = None
+        try:
+            client_temp = create_clob_client()
+            _sync_balance_allowance(client_temp)
+            api_bankroll = get_bankroll_from_api(client_temp) or config.bankroll
+        except Exception:
+            api_bankroll = config.bankroll
+        try:
+            kalshi_balance = kalshi_get_balance(api_key_id, private_key_pem)
+        except Exception:
+            kalshi_balance = 0.0
+
+        bankroll = min(api_bankroll or 0, kalshi_balance or 0)
+        if not config.arbitragem_bet_pct:
+            print(f"  [{market.upper()}] Arb Kalshi: % da banca não definida.", flush=True)
+            return False
+        bet_budget = bankroll * config.arbitragem_bet_pct
+        if bet_budget < POLY_MIN_ORDER_USD:
+            time.sleep(ARB_KALSHI_POLL_INTERVAL)
+            continue
+
+        max_contracts = int(bet_budget / total_cost)
+        if kalshi_size:
+            max_contracts = min(max_contracts, int(kalshi_size))
+        if max_contracts < 1:
+            time.sleep(ARB_KALSHI_POLL_INTERVAL)
+            continue
+
+        poly_amount = max_contracts * poly_price
+        kalshi_amount = max_contracts * kalshi_price
+        if poly_amount < POLY_MIN_ORDER_USD or poly_amount > api_bankroll or kalshi_amount > kalshi_balance:
+            time.sleep(ARB_KALSHI_POLL_INTERVAL)
+            continue
+
+        print(
+            f"  [{market.upper()}] ARB KALSHI: Poly {trade_direction.upper()} @ {poly_price:.2f} + Kalshi {kalshi_side.upper()} @ {kalshi_price:.2f} | N={max_contracts} | lucro {((1-total_cost)*100):.2f}%",
+            flush=True,
+        )
+
+        if config.dry_run:
+            _last_bet_window_by_market[market] = window_ts
+            return True
+
+        # Executar primeiro Kalshi (FOK), depois Polymarket
+        try:
+            create_order(
+                api_key_id,
+                private_key_pem,
+                kalshi_ticker,
+                kalshi_side,
+                max_contracts,
+                kalshi_price,
+                time_in_force="fill_or_kill",
+            )
+        except Exception as e:
+            print(f"  [{market.upper()}] Arb Kalshi: falha Kalshi {e!s}", flush=True)
+            time.sleep(ARB_KALSHI_POLL_INTERVAL)
+            continue
+
+        # Polymarket
+        client = create_clob_client()
+        _sync_balance_allowance(client)
+        token_id = tokens[0] if trade_direction == "up" else tokens[1]
+        ok = False
+        try:
+            ok = place_fok_order(client, token_id, poly_amount)
+            if not ok:
+                ok = place_limit_order(client, token_id, poly_amount)
+        except Exception as e:
+            print(f"  [{market.upper()}] Arb Kalshi: falha Polymarket {e!s}", flush=True)
+            ok = False
+
+        if ok:
+            print(f"  [{market.upper()}] Arb Kalshi executado | N={max_contracts}", flush=True)
+            _last_bet_window_by_market[market] = window_ts
+            return True
+        else:
+            print(f"  [{market.upper()}] Arb Kalshi: Polymarket falhou após Kalshi. Revise risco.", flush=True)
+            return False
+
+    return False
+
+
 def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = None, shared: Optional[dict] = None) -> bool:
     """Executa um ciclo para um mercado (btc, eth ou btc15m): espera, analisa, opera.
     active_mode: modo fixado no arranque (evita mistura safe/aggressive); se None, usa FROZEN_MODE ou config.mode.
@@ -372,10 +589,14 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         active_mode = FROZEN_MODE
     elif active_mode is None:
         active_mode = config.mode
-    is_15m = market == "btc15m"
+    is_15m = market.endswith("15m")
+    base_market = market.replace("15m", "") if is_15m else market
     window_sec = WINDOW_SEC_15M if is_15m else WINDOW_SEC
     window_ts = get_window_ts_15m() if is_15m else get_window_ts()
     close_time = window_ts + window_sec
+    if active_mode == "arb_kalshi" and not is_15m:
+        print(f"  [{market.upper()}] Arb Kalshi: mercado inválido (use BTC15m/ETH15m).", flush=True)
+        return False
     # Safe/aggressive: BTC-ETH 5m = desde 2 min até 40s; BTC 15m = desde 5 min até 40s
     monitor_secs = (
         MONITOR_START_T_15M if is_15m else (
@@ -390,11 +611,14 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         window_ts = window_ts + window_sec
         close_time = window_ts + window_sec
 
-    slug = f"btc-updown-15m-{window_ts}" if is_15m else f"{market}-updown-5m-{window_ts}"
+    slug = f"{base_market}-updown-15m-{window_ts}" if is_15m else f"{market}-updown-5m-{window_ts}"
 
     # Não apostar mais de uma vez na mesma janela por mercado (1 compra por mercado por janela)
     if _last_bet_window_by_market.get(market) == window_ts:
         return False
+
+    if active_mode == "arb_kalshi":
+        return _run_kalshi_arb_cycle(config, market, window_ts, close_time, slug)
 
     while True:
         secs = seconds_until_close(window_ts, window_sec)
@@ -1101,7 +1325,7 @@ def main():
     global FROZEN_MODE
     parser = argparse.ArgumentParser(description="Polymarket BTC 5-Min Up/Down Bot")
     parser.add_argument("--dry-run", action="store_true", help="Simular sem ordens reais")
-    parser.add_argument("--mode", choices=["safe", "spike_ai", "moon", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master", "90_95"], help="Modo de trading")
+    parser.add_argument("--mode", choices=["safe", "spike_ai", "moon", "aggressive", "degen", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"], help="Modo de trading")
     parser.add_argument("--safe-bet", type=float, metavar="USD", help="Modo safe: valor fixo em USD por entrada")
     parser.add_argument("--only-hedge-bet", type=float, metavar="USD", help="Modo only_hedge_plus: valor fixo em USD por entrada")
     parser.add_argument("--odd-master-bet", type=float, metavar="USD", help="Modo odd_master: valor fixo em USD por entrada")
@@ -1109,7 +1333,7 @@ def main():
     parser.add_argument("--arbitragem-pct", type=float, metavar="PCT", help="Modo arbitragem: %% da banca por entrada (ex: 25)")
     parser.add_argument("--once", action="store_true", help="Apenas um ciclo")
     parser.add_argument("--max-trades", type=int, help="Máximo de trades (dry-run)")
-    parser.add_argument("--markets", type=str, metavar="LIST", help="Mercados: btc, eth, btc15m (ex: btc,btc15m ou both para btc+eth)")
+    parser.add_argument("--markets", type=str, metavar="LIST", help="Mercados: btc, eth, btc15m, eth15m (ex: btc,btc15m ou both para btc+eth)")
     args = parser.parse_args()
 
     # Diagnóstico: o que o processo recebeu (para conferir se web/CLI passou --mode certo)
@@ -1122,13 +1346,13 @@ def main():
         if raw == "both":
             config.markets = ["btc", "eth"]
         elif "," in raw:
-            config.markets = [m.strip() for m in raw.split(",") if m.strip() in ("btc", "eth", "btc15m")]
+            config.markets = [m.strip() for m in raw.split(",") if m.strip() in ("btc", "eth", "btc15m", "eth15m")]
         elif raw in ("btc", "eth", "btc15m"):
             config.markets = [raw]
         else:
             config.markets = []
     if not config.markets:
-        print("Erro: nenhum mercado selecionado. Use --markets btc,eth,btc15m (ou pelo menos um).", flush=True)
+        print("Erro: nenhum mercado selecionado. Use --markets btc,eth,btc15m,eth15m (ou pelo menos um).", flush=True)
         sys.exit(1)
     # Modo: prioridade para --mode; se não veio pela CLI, usar BOT_MODE do ambiente (web define ao iniciar)
     config.mode = args.mode if args.mode is not None else os.getenv("BOT_MODE", "safe")
@@ -1248,7 +1472,7 @@ def main():
             print("Modo safe/SPIKE AI/MOON exige valor. Use --safe-bet 5.0", flush=True, file=sys.stderr)
             sys.exit(1)
 
-    if config.mode == "arbitragem":
+    if config.mode in ("arbitragem", "arb_kalshi"):
         if args.arbitragem_pct is not None:
             pct = args.arbitragem_pct
             if pct < 1 or pct > 100:
@@ -1295,8 +1519,8 @@ def main():
         print(f"ODD MASTER: entrada fixa ${config.fixed_bet_odd_master or config.min_bet:.2f} | últimos {ODD_MASTER_LAST_SEC}s, price-to-beat ±${ODD_MASTER_MAX_DIFF_USD:.0f}, maior odd", flush=True)
     if config.mode == "90_95":
         print(f"90-95: entrada fixa ${config.fixed_bet_90_95 or config.min_bet:.2f} | janela 20s–2s p/ close, maior preço entre {MODE_90_95_MIN_ODD:.0%} e {MODE_90_95_MAX_ODD:.0%}", flush=True)
-    if config.mode == "arbitragem" and config.arbitragem_bet_pct is not None:
-        print(f"Arbitragem: {config.arbitragem_bet_pct * 100:.0f}% da banca (via API) | Sem oportunidade = aposta normal", flush=True)
+    if config.mode in ("arbitragem", "arb_kalshi") and config.arbitragem_bet_pct is not None:
+        print(f"Arbitragem: {config.arbitragem_bet_pct * 100:.0f}% da banca (via API)", flush=True)
     if config.mode == "aggressive":
         print(f"Agressivo: {MODES['aggressive']['bet_pct']*100:.0f}% da banca (via API)", flush=True)
     print(f"Mercados: {markets_str}", flush=True)

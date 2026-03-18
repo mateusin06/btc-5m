@@ -321,9 +321,12 @@ class ConfigUpdate(BaseModel):
     api_key: Optional[str] = None
     api_secret: Optional[str] = None
     api_passphrase: Optional[str] = None
+    kalshi_api_key: Optional[str] = None  # Kalshi API Key ID
+    kalshi_api_secret: Optional[str] = None  # Kalshi private key PEM
+    kalshi_api_passphrase: Optional[str] = None  # opcional (futuro)
     starting_bankroll: Optional[float] = None
     min_bet: Optional[float] = None
-    bot_mode: Optional[Literal["safe", "spike_ai", "moon", "aggressive", "degen", "arbitragem", "only_hedge_plus", "odd_master", "90_95"]] = None
+    bot_mode: Optional[Literal["safe", "spike_ai", "moon", "aggressive", "degen", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"]] = None
     aggressive_bet_pct: Optional[float] = None
     max_token_price: Optional[float] = None
     arb_min_profit_pct: Optional[float] = None
@@ -354,6 +357,7 @@ class ConfigResponse(BaseModel):
     max_delta_open_usd: float = 0.0
     has_private_key: bool
     has_api_creds: bool
+    has_kalshi_api_creds: bool
     access_ok: bool = True
     access_reason: Optional[str] = None
     trial_ends_at: Optional[str] = None
@@ -362,9 +366,9 @@ class ConfigResponse(BaseModel):
 
 
 class BotStartRequest(BaseModel):
-    mode: Literal["safe", "spike_ai", "moon", "aggressive", "dry_run", "arbitragem", "only_hedge_plus", "odd_master", "90_95"] = Field(..., description="Modo de trading")
+    mode: Literal["safe", "spike_ai", "moon", "aggressive", "dry_run", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"] = Field(..., description="Modo de trading")
     dry_run: bool = Field(False, description="Se True, simula sem ordens reais")
-    markets: List[Literal["btc", "eth", "btc15m"]] = Field(default=["btc"], description="Mercados: btc, eth, btc15m (lista)")
+    markets: List[Literal["btc", "eth", "btc15m", "eth15m"]] = Field(default=["btc"], description="Mercados: btc, eth, btc15m, eth15m (lista)")
     safe_bet: Optional[float] = None
     only_hedge_bet: Optional[float] = None
     odd_master_bet: Optional[float] = None
@@ -494,6 +498,7 @@ def get_config(user: dict = Depends(get_current_user)):
             max_delta_open_usd=0.0,
             has_private_key=False,
             has_api_creds=False,
+            has_kalshi_api_creds=False,
             access_ok=True,
             access_reason="trial",
             trial_ends_at=None,
@@ -521,6 +526,7 @@ def get_config(user: dict = Depends(get_current_user)):
         max_delta_open_usd=float(row.get("max_delta_open_usd") or 0),
         has_private_key=bool(row.get("private_key") and str(row.get("private_key", "")).strip() and row.get("private_key") != "0x..."),
         has_api_creds=bool(row.get("api_key") and row.get("api_secret") and row.get("api_passphrase")),
+        has_kalshi_api_creds=bool(row.get("kalshi_api_key") and row.get("kalshi_api_secret")),
         access_ok=can_use,
         access_reason=reason,
         trial_ends_at=str(trial_ends_at) if trial_ends_at else None,
@@ -545,6 +551,12 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
         data["api_secret"] = upd.api_secret
     if upd.api_passphrase is not None:
         data["api_passphrase"] = upd.api_passphrase
+    if upd.kalshi_api_key is not None:
+        data["kalshi_api_key"] = upd.kalshi_api_key
+    if upd.kalshi_api_secret is not None:
+        data["kalshi_api_secret"] = upd.kalshi_api_secret
+    if upd.kalshi_api_passphrase is not None:
+        data["kalshi_api_passphrase"] = upd.kalshi_api_passphrase
     if upd.starting_bankroll is not None:
         data["starting_bankroll"] = upd.starting_bankroll
     if upd.min_bet is not None:
@@ -769,12 +781,16 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
             detail="Seu acesso ao bot encerrou. Para continuar: envie 100 USDC para a carteira informada na aba Iniciar bot e confirme o pagamento (hash da transação). O acesso será liberado em até 24h após confirmação.",
         )
     markets_list = req.markets if isinstance(req.markets, list) else [s.strip() for s in str(req.markets).split(",") if s.strip()]
-    markets_list = [m for m in markets_list if m in ("btc", "eth", "btc15m")]
+    markets_list = [m for m in markets_list if m in ("btc", "eth", "btc15m", "eth15m")]
+    if mode == "arb_kalshi":
+        markets_list = [m for m in markets_list if m in ("btc15m", "eth15m")]
+    else:
+        markets_list = [m for m in markets_list if m != "eth15m"]
     # Não adicionar nenhum mercado: só os selecionados pelo usuário (ex.: só btc15m = zero operação em btc 5min)
     if not markets_list:
         raise HTTPException(
             status_code=400,
-            detail="Selecione pelo menos um mercado (BTC 5min, ETH 5min ou BTC 15min).",
+            detail="Selecione pelo menos um mercado (BTC 5min, ETH 5min, BTC 15min ou ETH 15min).",
         )
 
     # Em operação real, validar parâmetros obrigatórios por modo
@@ -808,12 +824,18 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
                     status_code=400,
                     detail=f"Modo 90-95 exige valor de aposta (Config ou envio). Mínimo: ${min_bet:.2f}.",
                 )
-        if mode == "arbitragem":
+        if mode in ("arbitragem", "arb_kalshi"):
             arb_pct = req.arbitragem_pct if req.arbitragem_pct is not None else (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))
             if arb_pct is None or arb_pct < 1 or arb_pct > 100:
                 raise HTTPException(
                     status_code=400,
                     detail="Modo Arbitragem exige % da banca (1–100) na Config ou no envio.",
+                )
+        if mode == "arb_kalshi":
+            if not row.get("kalshi_api_key") or not row.get("kalshi_api_secret"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Salve suas credenciais Kalshi (API Key ID e Private Key) na aba Config antes de iniciar o modo Arb Kalshi.",
                 )
 
     env = os.environ.copy()
@@ -837,6 +859,9 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     _use_cl = row.get("use_chainlink_open")
     env["USE_CHAINLINK_OPEN"] = "1" if (_use_cl is None or _use_cl) else "0"
     env["MAX_DELTA_OPEN_USD"] = str(max(0.0, float(row.get("max_delta_open_usd") or 0)))
+    if mode == "arb_kalshi":
+        env["KALSHI_API_KEY_ID"] = row.get("kalshi_api_key", "")
+        env["KALSHI_PRIVATE_KEY_PEM"] = row.get("kalshi_api_secret", "")
     safe_id = _safe_user_id(user["id"])
     env["BOT_USER_ID"] = safe_id
     if mode == "90_95":
@@ -872,7 +897,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
             start_config["odd_master_bet"] = req.odd_master_bet if req.odd_master_bet is not None else float(row["odd_master_bet"])
         if mode == "90_95" and (req.bet_90_95 is not None or (row.get("bet_90_95") and float(row["bet_90_95"]))):
             start_config["bet_90_95"] = req.bet_90_95 if req.bet_90_95 is not None else float(row["bet_90_95"])
-        if mode == "arbitragem" and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
+        if mode in ("arbitragem", "arb_kalshi") and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
             start_config["arbitragem_pct"] = int(req.arbitragem_pct if req.arbitragem_pct is not None else float(row["arbitragem_pct"]))
         _config_to_supabase(user_id, user["_token"], start_config, user.get("email"))
     except Exception:
@@ -897,7 +922,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         bet = req.bet_90_95 if req.bet_90_95 is not None else row.get("bet_90_95")
         if bet is not None:
             cmd.extend(["--bet-90-95", str(bet)])
-    if mode == "arbitragem":
+    if mode in ("arbitragem", "arb_kalshi"):
         pct = req.arbitragem_pct if req.arbitragem_pct is not None else row.get("arbitragem_pct")
         if pct is not None:
             cmd.extend(["--arbitragem-pct", str(int(pct))])
@@ -921,7 +946,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         elif mode == "90_95" and (req.bet_90_95 is not None or (row.get("bet_90_95") and float(row["bet_90_95"]))):
             bet = req.bet_90_95 if req.bet_90_95 is not None else float(row["bet_90_95"])
             extra = f" bet_90_95=${bet:.2f}"
-        elif mode == "arbitragem" and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
+        elif mode in ("arbitragem", "arb_kalshi") and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
             pct = req.arbitragem_pct if req.arbitragem_pct is not None else float(row["arbitragem_pct"])
             extra = f" arbitragem_pct={int(round(pct * 100))}%"
         with open(log_path, "w", encoding="utf-8") as log_file:

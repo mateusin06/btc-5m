@@ -161,6 +161,40 @@
       </div>
 
       <div class="bg-panel rounded-xl border border-border p-6">
+        <h2 class="text-lg font-semibold text-white mb-2">Credenciais Kalshi</h2>
+        <p class="text-sm text-muted mb-4">A Kalshi não permite derivar API pela chave privada. Você precisa gerar a API Key ID e baixar a Private Key (.key). Cole a Private Key abaixo e depois clique em &quot;Salvar config&quot;.</p>
+        <div class="mb-4">
+          <button type="button" id="btn-kalshi-tutorial" class="text-sm text-accent hover:underline focus:outline-none">Gerar API Kalshi</button>
+          <div id="kalshi-tutorial" class="hidden mt-3 p-4 rounded-lg bg-[#0f1116] border border-border text-sm text-gray-300 space-y-2">
+            <p class="font-medium text-gray-200">Como gerar API na Kalshi:</p>
+            <ol class="list-decimal list-inside space-y-1 ml-1">
+              <li>Acesse sua conta Kalshi.</li>
+              <li>Vá para a área de API/Developer e gere uma API Key.</li>
+              <li>Copie a Key e o Secret e cole abaixo.</li>
+            </ol>
+          </div>
+        </div>
+        <div class="grid gap-4 max-w-xl">
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Kalshi API Key ID</label>
+            <input type="password" id="input-kalshi-key" placeholder="uuid-da-api-key" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2 font-mono text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Kalshi Private Key (.key)</label>
+            <textarea id="input-kalshi-secret" placeholder="-----BEGIN PRIVATE KEY-----" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2 font-mono text-xs h-32"></textarea>
+          </div>
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Kalshi API Passphrase (se existir)</label>
+            <input type="password" id="input-kalshi-passphrase" placeholder="opcional" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2 font-mono text-sm" />
+          </div>
+          <div class="flex gap-3 items-center">
+            <button type="button" id="btn-kalshi-status" class="px-4 py-2 bg-[#2d333b] text-white font-medium rounded-lg hover:bg-panel border border-border">Status Kalshi</button>
+            <span id="kalshi-status" class="text-sm text-muted"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-panel rounded-xl border border-border p-6">
         <h2 class="text-lg font-semibold text-white mb-4">Parâmetros do bot</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -257,6 +291,10 @@
               <input type="checkbox" id="market-btc15m" class="rounded border-border" />
               <span class="text-sm">BTC 15min</span>
             </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="market-eth15m" class="rounded border-border" />
+              <span class="text-sm">ETH 15min</span>
+            </label>
           </div>
           <p class="text-xs text-muted mt-1">Marque um ou mais. O bot opera <strong>apenas</strong> nos mercados marcados (ex.: só BTC 15min = não opera em BTC 5min nem ETH).</p>
         </div>
@@ -271,6 +309,7 @@
               <option value="only_hedge_plus">Only Hedge+ — só entra com EV+</option>
               <option value="odd_master">ODD MASTER — últimos 10s, price-to-beat ±$10, maior odd</option>
               <option value="90_95">90-95 — janela 20s–2s, spike/confiança, preço 80–95c (aposta fixa)</option>
+              <option value="arb_kalshi">Arb Kalshi — Polymarket vs Kalshi (BTC/ETH 15min)</option>
               <option value="dry_run">Dry run — simulação (sem ordens reais)</option>
               <option value="arbitragem">Arbitragem — % da banca</option>
             </select>
@@ -296,7 +335,7 @@
             <input type="number" id="bot-bet-90-95" step="0.01" min="0" placeholder="5" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
           </div>
           <div id="wrap-arbitragem-pct" class="hidden">
-            <label class="block text-sm text-gray-400 mb-1">% da banca (Arbitragem)</label>
+            <label class="block text-sm text-gray-400 mb-1">% da banca (Arbitragem / Arb Kalshi)</label>
             <input type="number" id="bot-arbitragem-pct" min="1" max="100" placeholder="25" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
           </div>
           <div id="wrap-dry-run" class="hidden">
@@ -609,6 +648,15 @@
         : 'Ocultar mini tutorial';
     });
 
+    getEl('btn-kalshi-tutorial').addEventListener('click', () => {
+      const el = getEl('kalshi-tutorial');
+      const btn = getEl('btn-kalshi-tutorial');
+      el.classList.toggle('hidden');
+      btn.textContent = el.classList.contains('hidden')
+        ? 'Gerar API Kalshi'
+        : 'Ocultar instruções';
+    });
+
     // --- Config: load
     async function loadConfig() {
       try {
@@ -636,9 +684,13 @@
         if (c.bet_90_95 != null) getEl('bot-bet-90-95').value = c.bet_90_95;
         if (c.arbitragem_pct != null) getEl('bot-arbitragem-pct').value = c.arbitragem_pct;
         if (c.aggressive_bet_pct != null) getEl('bot-aggressive-pct').value = c.aggressive_bet_pct;
+        getEl('kalshi-status').textContent = c.has_kalshi_api_creds ? 'Credenciais Kalshi salvas.' : 'Credenciais Kalshi não salvas.';
+        getEl('input-kalshi-key').value = '';
+        getEl('input-kalshi-secret').value = '';
+        getEl('input-kalshi-passphrase').value = '';
         // Sincronizar dropdown "Modo" do Iniciar com a config salva (evita iniciar em safe sem querer)
         const modeEl = getEl('bot-mode');
-        if (c.bot_mode && ['safe','spike_ai','moon','aggressive','only_hedge_plus','dry_run','arbitragem','odd_master','90_95'].includes(c.bot_mode)) {
+        if (c.bot_mode && ['safe','spike_ai','moon','aggressive','only_hedge_plus','dry_run','arbitragem','arb_kalshi','odd_master','90_95'].includes(c.bot_mode)) {
           modeEl.value = c.bot_mode;
         } else {
           modeEl.value = 'safe';
@@ -790,6 +842,11 @@
       }
     });
 
+    getEl('btn-kalshi-status').addEventListener('click', async () => {
+      getEl('kalshi-status').textContent = 'Verificando...';
+      await loadConfig();
+    });
+
     document.querySelectorAll('[data-copy]').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = 'out-' + btn.dataset.copy.replace('_', '-');
@@ -823,6 +880,12 @@
         payload.api_secret = window._lastCreds.api_secret;
         payload.api_passphrase = window._lastCreds.api_passphrase;
       }
+      const kalshiKey = getEl('input-kalshi-key').value.trim();
+      const kalshiSecret = getEl('input-kalshi-secret').value.trim();
+      const kalshiPass = getEl('input-kalshi-passphrase').value.trim();
+      if (kalshiKey) payload.kalshi_api_key = kalshiKey;
+      if (kalshiSecret) payload.kalshi_api_secret = kalshiSecret;
+      if (kalshiPass) payload.kalshi_api_passphrase = kalshiPass;
       const safeBet = parseFloat(getEl('cfg-safe-bet').value);
       if (!isNaN(safeBet) && safeBet > 0) payload.safe_bet = safeBet;
       const onlyHedgeBet = parseFloat(getEl('cfg-only-hedge-bet').value);
@@ -856,7 +919,7 @@
       getEl('wrap-only-hedge-bet').classList.toggle('hidden', v !== 'only_hedge_plus');
       getEl('wrap-odd-master-bet').classList.toggle('hidden', v !== 'odd_master');
       getEl('wrap-bet-90-95').classList.toggle('hidden', v !== '90_95');
-      getEl('wrap-arbitragem-pct').classList.toggle('hidden', v !== 'arbitragem');
+      getEl('wrap-arbitragem-pct').classList.toggle('hidden', !['arbitragem','arb_kalshi'].includes(v));
       getEl('wrap-dry-run').classList.toggle('hidden', v !== 'dry_run');
     }
     botMode.addEventListener('change', updateBotModeUi);
@@ -915,6 +978,7 @@
       if (getEl('market-btc').checked) markets.push('btc');
       if (getEl('market-eth').checked) markets.push('eth');
       if (getEl('market-btc15m').checked) markets.push('btc15m');
+      if (getEl('market-eth15m').checked) markets.push('eth15m');
       if (markets.length === 0) {
         alert('Selecione pelo menos um mercado (BTC 5min, ETH 5min ou BTC 15min).');
         return;

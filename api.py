@@ -90,7 +90,7 @@ def get_btc_candles_15m(limit: int = 20) -> list[dict]:
 
 def get_price_by_market(market: str) -> Optional[float]:
     """Preço atual por mercado (btc, eth ou btc15m — btc15m usa preço BTC)."""
-    if market == "eth":
+    if market in ("eth", "eth15m"):
         return get_eth_price()
     return get_btc_price()
 
@@ -99,6 +99,8 @@ def get_candles_by_market(market: str, limit: int = 30) -> list[dict]:
     """Candles por mercado: 1min para btc/eth, 15min para btc15m."""
     if market == "btc15m":
         return get_btc_candles_15m(limit=min(limit, 20))
+    if market == "eth15m":
+        return get_eth_candles_1m(limit=limit)
     if market == "eth":
         return get_eth_candles_1m(limit=limit)
     return get_btc_candles_1m(limit=limit)
