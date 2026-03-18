@@ -948,7 +948,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
             extra = f" bet_90_95=${bet:.2f}"
         elif mode in ("arbitragem", "arb_kalshi") and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
             pct = req.arbitragem_pct if req.arbitragem_pct is not None else float(row["arbitragem_pct"])
-            extra = f" arbitragem_pct={int(round(pct * 100))}%"
+            extra = f" arbitragem_pct={int(round(pct))}%"
         with open(log_path, "w", encoding="utf-8") as log_file:
             log_file.write(f"--- Bot iniciado em {datetime.now(timezone.utc).isoformat()} | modo={mode}{extra} dry_run={dry_run} markets={','.join(markets_list)} ---\n")
         stdout_dest = open(log_path, "a", encoding="utf-8")

@@ -440,7 +440,11 @@ def _run_kalshi_arb_cycle(config: Config, market: str, window_ts: int, close_tim
         print(f"  [{market.upper()}] Arb Kalshi: mercado Polymarket não encontrado.", flush=True)
         return False
 
-    kalshi_market = _find_kalshi_15m_market(api_key_id, private_key_pem, market, close_time)
+    try:
+        kalshi_market = _find_kalshi_15m_market(api_key_id, private_key_pem, market, close_time)
+    except Exception as e:
+        print(f"  [{market.upper()}] Arb Kalshi: erro ao ler chave Kalshi (verifique PEM). {e!s}", flush=True)
+        return False
     if not kalshi_market:
         print(f"  [{market.upper()}] Arb Kalshi: market 15m não encontrado na Kalshi.", flush=True)
         return False

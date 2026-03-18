@@ -11,8 +11,16 @@ from cryptography.hazmat.primitives.asymmetric import padding
 KALSHI_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 
 
+def _normalize_pem(pem_text: str) -> str:
+    s = (pem_text or "").strip().strip('"').strip("'")
+    s = s.replace("\\n", "\n")
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    return s
+
+
 def _load_private_key(pem_text: str):
-    key_bytes = pem_text.strip().encode("utf-8")
+    normalized = _normalize_pem(pem_text)
+    key_bytes = normalized.encode("utf-8")
     return serialization.load_pem_private_key(
         key_bytes,
         password=None,
