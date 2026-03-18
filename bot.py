@@ -42,7 +42,7 @@ def _parse_markets() -> list[str]:
 MODES = {
     "safe": {"min_confidence": 0.72},
     "spike_ai": {"min_confidence": 0.72},  # Igual ao safe, mas com gate de IA (Ollama) antes de executar
-    "moon": {},  # Estratégia MOON: CVD (divergência + momentum) com mão fixa safe
+    "moon": {"min_confidence": 0.40},  # Estratégia MOON: CVD (divergência + momentum) com mão fixa safe
     "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.58},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
@@ -516,6 +516,19 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                     reason = f"Momentum bearish: preço {delta_pct:.3f}% e CVD {cvd:.1f}"
 
                 if signal is not None:
+                    mode_cfg = MODES.get(active_mode, MODES["safe"])
+                    min_conf = mode_cfg.get("min_confidence")
+                    if min_conf is not None:
+                        moon_result = analyze(
+                            window_open,
+                            float(current_price),
+                            candles or [],
+                            tick_prices[-20:] if tick_prices else None,
+                        )
+                        if moon_result.confidence < float(min_conf):
+                            print(f"  [{market.upper()}] MOON: sinal {signal.upper()} ignorado (confiança {moon_result.confidence:.0%} < {min_conf:.0%})", flush=True)
+                            time.sleep(1)
+                            continue
                     trade_direction = signal
                     final_result = None
                     fired = True
