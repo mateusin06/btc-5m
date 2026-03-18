@@ -580,7 +580,13 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
             time.sleep(poll)
             continue
 
-        if abs(result.score - prev_score) >= SPIKE_THRESHOLD and prev_score != 0:
+        if active_mode == "moon":
+            prev_score = result.score
+            poll = ARB_POLL_INTERVAL if active_mode == "arbitragem" else (1 if active_mode == "90_95" else TA_POLL_INTERVAL)
+            time.sleep(poll)
+            continue
+
+        if active_mode != "moon" and abs(result.score - prev_score) >= SPIKE_THRESHOLD and prev_score != 0:
             # Spike mais assertivo: só dispara se confiança mínima (evita ruído)
             if result.confidence >= SPIKE_MIN_CONFIDENCE:
                 trade_direction = result.direction
@@ -681,7 +687,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         poll = ARB_POLL_INTERVAL if active_mode == "arbitragem" else (1 if active_mode == "90_95" else TA_POLL_INTERVAL)
         time.sleep(poll)
 
-    if not fired and best_result:
+    if not fired and best_result and active_mode != "moon":
         trade_direction = best_result.direction
         final_result = best_result
         # T-5s mais assertivo: só entra se o melhor sinal tiver confiança mínima
