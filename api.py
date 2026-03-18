@@ -140,6 +140,56 @@ def get_cvd_by_market(market: str, limit: int = 500) -> float:
         return 0.0
 
 
+def get_cvd_snapshot(market: str, limit: int = 500) -> dict:
+    """
+    Snapshot de CVD e volume usando trades recentes da Binance.
+    Retorna cvd total, volume total e comparação entre metade recente e anterior (momentum).
+    """
+    symbol = "BTCUSDT"
+    if market == "eth":
+        symbol = "ETHUSDT"
+    try:
+        limit = max(50, min(1000, int(limit)))
+        r = requests.get(
+            BINANCE_TRADES,
+            params={"symbol": symbol, "limit": limit},
+            timeout=5,
+        )
+        r.raise_for_status()
+        data = r.json()
+        if not data:
+            return {"cvd": 0.0, "total_vol": 0.0, "cvd_recent": 0.0, "vol_recent": 0.0, "cvd_prev": 0.0, "vol_prev": 0.0, "n": 0}
+
+        def _sum_trades(trades: list[dict]) -> tuple[float, float]:
+            cvd = 0.0
+            vol = 0.0
+            for t in trades:
+                try:
+                    qty = float(t.get("qty") or t.get("quantity") or 0.0)
+                except Exception:
+                    qty = 0.0
+                vol += qty
+                is_buyer_maker = bool(t.get("isBuyerMaker"))
+                cvd += (-qty if is_buyer_maker else qty)
+            return cvd, vol
+
+        mid = len(data) // 2
+        cvd_total, vol_total = _sum_trades(data)
+        cvd_prev, vol_prev = _sum_trades(data[:mid]) if mid > 0 else (0.0, 0.0)
+        cvd_recent, vol_recent = _sum_trades(data[mid:]) if mid > 0 else (0.0, 0.0)
+        return {
+            "cvd": cvd_total,
+            "total_vol": vol_total,
+            "cvd_recent": cvd_recent,
+            "vol_recent": vol_recent,
+            "cvd_prev": cvd_prev,
+            "vol_prev": vol_prev,
+            "n": len(data),
+        }
+    except Exception:
+        return {"cvd": 0.0, "total_vol": 0.0, "cvd_recent": 0.0, "vol_recent": 0.0, "cvd_prev": 0.0, "vol_prev": 0.0, "n": 0}
+
+
 def get_window_resolution_binance(window_start_ts: int) -> Optional[bool]:
     """
     Verifica se Up ou Down ganhou via Binance.

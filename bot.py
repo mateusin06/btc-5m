@@ -11,6 +11,7 @@ import os
 import sys
 import time
 import threading
+import statistics
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -61,6 +62,13 @@ MODE_90_95_EARLY_EXIT = 2  # 90-95: não entrar quando faltar menos de 2s
 MODE_90_95_MIN_ODD = 0.80  # 90-95: preço mín. do contrato (80c) — só neste modo
 MODE_90_95_MAX_ODD = 0.95  # 90-95: preço máx. do contrato (95c) — só neste modo
 ODD_MASTER_EARLY_EXIT = 2  # ODD MASTER: não entrar quando faltar menos de 2s
+MOON_MIN_ODD = float(os.getenv("MOON_MIN_ODD", "0.40"))  # MOON: preço mínimo do contrato (ex: 0.40 = 40c)
+MOON_DELTA_DIVERGENCE_PCT = 0.03  # MOON: delta mínimo (%) para divergência
+MOON_DELTA_MOMENTUM_PCT = 0.07    # MOON: delta mínimo (%) para momentum
+MOON_MIN_VOLATILITY_PCT = 0.02    # MOON: volatilidade mínima (%) nos últimos candles
+MOON_CVD_NORM_MIN = 0.08          # MOON: CVD normalizado mínimo (|cvd|/vol)
+MOON_CVD_MOMENTUM_MIN = 0.03      # MOON: momentum mínimo do CVD normalizado
+MOON_CVD_TRADE_LIMIT = 500        # MOON: trades recentes usados para CVD
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -490,39 +498,95 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
 
         # Modo MOON: estratégia baseada em CVD (divergência + momentum)
         if active_mode == "moon":
-            from api import get_cvd_by_market
+            from api import get_cvd_snapshot
+
+            candle_limit_ta = max(30, MIN_CANDLES_FOR_FULL_TA)
+            candles = get_btc_candles_1m(limit=candle_limit_ta) if is_15m else get_candles_by_market(market, limit=candle_limit_ta)
+            if not candles or len(candles) < MIN_CANDLES_FOR_FULL_TA:
+                time.sleep(1)
+                continue
 
             current_price = price or (candles[-1]["c"] if candles else None)
             if window_open and current_price:
                 delta_pct = (float(current_price) - float(window_open)) / float(window_open) * 100.0
-                cvd = get_cvd_by_market(market)
+                snap = get_cvd_snapshot(market, limit=MOON_CVD_TRADE_LIMIT)
+                total_vol = snap.get("total_vol") or 0.0
+                cvd = snap.get("cvd") or 0.0
+                cvd_norm = (cvd / total_vol) if total_vol > 0 else 0.0
+                vol_recent = snap.get("vol_recent") or 0.0
+                vol_prev = snap.get("vol_prev") or 0.0
+                cvd_recent_norm = (snap.get("cvd_recent") or 0.0) / vol_recent if vol_recent > 0 else 0.0
+                cvd_prev_norm = (snap.get("cvd_prev") or 0.0) / vol_prev if vol_prev > 0 else 0.0
+                cvd_momentum = cvd_recent_norm - cvd_prev_norm
+
+                # Volatilidade mínima (evita entrar em mercado travado)
+                prices = [c["c"] for c in candles[-10:]]
+                returns = []
+                for i in range(1, len(prices)):
+                    if prices[i - 1] != 0:
+                        returns.append((prices[i] - prices[i - 1]) / prices[i - 1])
+                vol_pct = statistics.pstdev(returns) * 100 if len(returns) >= 5 else 0.0
+                if vol_pct < MOON_MIN_VOLATILITY_PCT:
+                    time.sleep(1)
+                    continue
+
+                # Confirmação de micro-preço: candle 1m atual na direção do sinal
+                last_o = candles[-1]["o"]
+                last_c = candles[-1]["c"]
+                micro_dir = 1 if last_c > last_o else (-1 if last_c < last_o else 0)
                 signal = None
                 reason = ""
                 # Divergência bullish: preço caiu >= -0.02% e CVD > +10
-                if delta_pct <= -0.02 and cvd > 10:
+                if (
+                    delta_pct <= -MOON_DELTA_DIVERGENCE_PCT
+                    and cvd_norm >= MOON_CVD_NORM_MIN
+                    and cvd_momentum >= MOON_CVD_MOMENTUM_MIN
+                    and micro_dir > 0
+                ):
                     signal = "up"
-                    reason = f"Divergência bullish: preço {delta_pct:.3f}% e CVD {cvd:.1f}"
+                    reason = f"Divergência bullish: preço {delta_pct:.3f}% | CVDn {cvd_norm:.2f} | mom {cvd_momentum:.2f}"
                 # Divergência bearish: preço subiu >= +0.02% e CVD < -10
-                elif delta_pct >= 0.02 and cvd < -10:
+                elif (
+                    delta_pct >= MOON_DELTA_DIVERGENCE_PCT
+                    and cvd_norm <= -MOON_CVD_NORM_MIN
+                    and cvd_momentum <= -MOON_CVD_MOMENTUM_MIN
+                    and micro_dir < 0
+                ):
                     signal = "down"
-                    reason = f"Divergência bearish: preço {delta_pct:.3f}% e CVD {cvd:.1f}"
+                    reason = f"Divergência bearish: preço {delta_pct:.3f}% | CVDn {cvd_norm:.2f} | mom {cvd_momentum:.2f}"
                 # Momentum bullish: preço subiu > +0.05% e CVD > +20
-                elif delta_pct > 0.05 and cvd > 20:
+                elif (
+                    delta_pct > MOON_DELTA_MOMENTUM_PCT
+                    and cvd_norm >= MOON_CVD_NORM_MIN
+                    and cvd_momentum >= MOON_CVD_MOMENTUM_MIN
+                    and micro_dir > 0
+                ):
                     signal = "up"
-                    reason = f"Momentum bullish: preço {delta_pct:.3f}% e CVD {cvd:.1f}"
+                    reason = f"Momentum bullish: preço {delta_pct:.3f}% | CVDn {cvd_norm:.2f} | mom {cvd_momentum:.2f}"
                 # Momentum bearish: preço caiu < -0.05% e CVD < -20
-                elif delta_pct < -0.05 and cvd < -20:
+                elif (
+                    delta_pct < -MOON_DELTA_MOMENTUM_PCT
+                    and cvd_norm <= -MOON_CVD_NORM_MIN
+                    and cvd_momentum <= -MOON_CVD_MOMENTUM_MIN
+                    and micro_dir < 0
+                ):
                     signal = "down"
-                    reason = f"Momentum bearish: preço {delta_pct:.3f}% e CVD {cvd:.1f}"
+                    reason = f"Momentum bearish: preço {delta_pct:.3f}% | CVDn {cvd_norm:.2f} | mom {cvd_momentum:.2f}"
 
                 if signal is not None:
                     mode_cfg = MODES.get(active_mode, MODES["safe"])
                     min_conf = mode_cfg.get("min_confidence")
                     if min_conf is not None:
+                        candle_limit_ta = max(30, MIN_CANDLES_FOR_FULL_TA)
+                        candles = get_btc_candles_1m(limit=candle_limit_ta) if is_15m else get_candles_by_market(market, limit=candle_limit_ta)
+                        if not candles or len(candles) < MIN_CANDLES_FOR_FULL_TA:
+                            print(f"  [{market.upper()}] MOON: candles insuficientes para confiança, pulando sinal.", flush=True)
+                            time.sleep(1)
+                            continue
                         moon_result = analyze(
                             window_open,
                             float(current_price),
-                            candles or [],
+                            candles,
                             tick_prices[-20:] if tick_prices else None,
                         )
                         if moon_result.confidence < float(min_conf):
@@ -534,6 +598,9 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                     fired = True
                     print(f"  [{market.upper()}] MOON: {signal.upper()} | {reason}", flush=True)
                     break
+
+            time.sleep(TA_POLL_INTERVAL)
+            continue
 
         # Modo arbitragem: prioridade para arb pura a cada iteração (Up+Down < 1-margem)
         if active_mode == "arbitragem" and tokens and len(tokens) == 2 and event:
@@ -575,12 +642,6 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                 break
 
         if active_mode == "90_95":
-            prev_score = result.score
-            poll = ARB_POLL_INTERVAL if active_mode == "arbitragem" else (1 if active_mode == "90_95" else TA_POLL_INTERVAL)
-            time.sleep(poll)
-            continue
-
-        if active_mode == "moon":
             prev_score = result.score
             poll = ARB_POLL_INTERVAL if active_mode == "arbitragem" else (1 if active_mode == "90_95" else TA_POLL_INTERVAL)
             time.sleep(poll)
@@ -844,6 +905,9 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                 if active_mode != "arbitragem":
                     print(f"  [{market.upper()}] Token @ ${token_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
                     return False
+            if active_mode == "moon" and token_price is not None and token_price < MOON_MIN_ODD:
+                print(f"  [{market.upper()}] MOON: Token @ ${token_price:.2f} < ${MOON_MIN_ODD:.2f}, pulando.", flush=True)
+                return False
             # Modo 90-95: só executar (mesmo dry run) se preço ainda estiver entre 80c e 95c
             if active_mode == "90_95" and token_price is not None:
                 if token_price < MODE_90_95_MIN_ODD or token_price > MODE_90_95_MAX_ODD:
@@ -887,10 +951,19 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     from api import get_token_price
     token_id = tokens[0] if trade_direction == "up" else tokens[1]
     real_price = get_token_price(token_id, "BUY")
+    if real_price is None and event:
+        from api import get_token_price_from_event
+        real_price = get_token_price_from_event(event, trade_direction)
     # Log de operação real (auditoria)
     print(f"  [{market.upper()}] REAL | modo={active_mode} janela={window_ts} {trade_direction.upper()} ${bet_size:.2f}", flush=True)
+    if active_mode == "moon" and real_price is None:
+        print(f"  [{market.upper()}] MOON: preço do token indisponível, pulando.", flush=True)
+        return False
     if real_price is not None and real_price > MAX_TOKEN_PRICE and active_mode != "arbitragem":
         print(f"  [{market.upper()}] Token @ ${real_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
+        return False
+    if active_mode == "moon" and real_price is not None and real_price < MOON_MIN_ODD:
+        print(f"  [{market.upper()}] MOON: Token @ ${real_price:.2f} < ${MOON_MIN_ODD:.2f}, pulando.", flush=True)
         return False
     # Modo 90-95: só executar ordem real se preço ainda estiver entre 80c e 95c (revalidação antes de enviar)
     if active_mode == "90_95":
