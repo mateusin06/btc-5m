@@ -748,7 +748,7 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
                         ok = False
                     else:
                         available, best_ask = _poly_available_shares(client, token_id, cap)
-                        if available < contracts:
+                        if available <= 0:
                             now = time.time()
                             if now - last_liq_log >= 30:
                                 last_liq_log = now
@@ -760,7 +760,25 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
                                 )
                             ok = False
                         else:
-                            ok = place_fok_limit_order(client, token_id, contracts, cap)
+                            # Reduz N para a liquidez real disponível no cap (sem quebrar o mínimo de $1)
+                            max_by_liq = int(math.floor(available))
+                            new_contracts = min(contracts, max_by_liq)
+                            min_contracts_now = int(math.ceil(POLY_MIN_ORDER_USD / max(poly_now, 0.0001)))
+                            if new_contracts < min_contracts_now:
+                                ok = False
+                            else:
+                                # Revalidar budget e Kalshi para o novo N
+                                poly_amount_now = new_contracts * poly_now
+                                kalshi_amount_now = new_contracts * kalshi_price
+                                if (
+                                    poly_amount_now > api_bankroll
+                                    or kalshi_amount_now > kalshi_balance
+                                    or (poly_amount_now + kalshi_amount_now) > bet_budget
+                                ):
+                                    ok = False
+                                else:
+                                    contracts = new_contracts
+                                    ok = place_fok_limit_order(client, token_id, contracts, cap)
             if not ok:
                 print(f"  [{market.upper()}] Arb Kalshi: Polymarket FOK falhou, não enviando limit para evitar desbalanceamento.", flush=True)
         except Exception as e:
