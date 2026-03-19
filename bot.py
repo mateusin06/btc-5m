@@ -414,7 +414,59 @@ def _kalshi_candidate_tickers(market: str, close_ts: int) -> list[str]:
     return out
 
 
-def _run_kalshi_arb_cycle(config: Config, market: str, window_ts: int, close_time: int, slug: str) -> bool:
+def _parse_kalshi_close_ts(market_obj: dict) -> Optional[int]:
+    from datetime import datetime, timezone
+    close_ts = market_obj.get("close_ts")
+    if close_ts:
+        try:
+            return int(close_ts)
+        except Exception:
+            pass
+    close_str = market_obj.get("close_time") or ""
+    if close_str:
+        try:
+            dt = datetime.fromisoformat(close_str.replace("Z", "+00:00"))
+            return int(dt.replace(tzinfo=timezone.utc).timestamp())
+        except Exception:
+            return None
+    return None
+
+
+def _find_kalshi_active_market(api_key_id: str, private_key_pem: str, series_ticker: str) -> tuple[Optional[dict], Optional[int]]:
+    try:
+        from kalshi_api import get_markets
+    except Exception:
+        return (None, None)
+    now_ts = int(time.time())
+    cursor = ""
+    best = None
+    best_close = None
+    for _ in range(5):
+        data = get_markets(
+            api_key_id,
+            private_key_pem,
+            status="open",
+            limit=200,
+            cursor=cursor,
+            series_ticker=series_ticker,
+        )
+        markets = data.get("markets") or data.get("data") or []
+        for m in markets:
+            close_ts = _parse_kalshi_close_ts(m)
+            if close_ts is None:
+                continue
+            if close_ts < now_ts:
+                continue
+            if best_close is None or close_ts < best_close:
+                best = m
+                best_close = close_ts
+        cursor = data.get("cursor") or data.get("next_cursor") or ""
+        if not cursor:
+            break
+    return (best, best_close)
+
+
+def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     """Arbitragem Polymarket vs Kalshi (BTC/ETH 15m)."""
     from api import get_market_by_slug, extract_token_ids, get_token_price, get_token_price_from_event
     api_key_id = (os.getenv("KALSHI_API_KEY_ID") or "").strip()
@@ -423,35 +475,34 @@ def _run_kalshi_arb_cycle(config: Config, market: str, window_ts: int, close_tim
         print(f"  [{market.upper()}] Arb Kalshi: credenciais Kalshi ausentes.", flush=True)
         return False
 
-    event = get_market_by_slug(slug)
-    tokens = extract_token_ids(event) if event else None
-    if not tokens or len(tokens) < 2:
-        print(f"  [{market.upper()}] Arb Kalshi: mercado Polymarket não encontrado.", flush=True)
-        return False
-
     try:
         from kalshi_api import get_balance as kalshi_get_balance, get_orderbook, create_order
     except Exception as e:
         print(f"  [{market.upper()}] Arb Kalshi: erro ao carregar módulo Kalshi: {e!s}", flush=True)
         return False
 
-    kalshi_ticker = None
-    try:
-        for t in _kalshi_candidate_tickers(market, close_time):
-            try:
-                _ = get_orderbook(api_key_id, private_key_pem, t, depth=1)
-                kalshi_ticker = t
-                break
-            except Exception:
-                continue
-    except Exception as e:
-        print(f"  [{market.upper()}] Arb Kalshi: erro ao ler chave Kalshi (verifique PEM). {e!s}", flush=True)
+    series = "KXBTC15M" if market.startswith("btc") else "KXETH15M"
+    kalshi_market, kalshi_close_ts = _find_kalshi_active_market(api_key_id, private_key_pem, series)
+    if not kalshi_market or not kalshi_close_ts:
+        print(f"  [{market.upper()}] Arb Kalshi: market 15m não encontrado na Kalshi.", flush=True)
         return False
+    kalshi_ticker = kalshi_market.get("ticker")
     if not kalshi_ticker:
-        cand = ", ".join(_kalshi_candidate_tickers(market, close_time)[:6])
-        print(f"  [{market.upper()}] Arb Kalshi: market 15m não encontrado na Kalshi. Ex: {cand}", flush=True)
+        print(f"  [{market.upper()}] Arb Kalshi: ticker Kalshi ausente.", flush=True)
         return False
-    print(f"  [{market.upper()}] Arb Kalshi: usando ticker {kalshi_ticker}", flush=True)
+
+    window_ts = kalshi_close_ts - WINDOW_SEC_15M
+    close_time = kalshi_close_ts
+    base_market = market.replace("15m", "")
+    slug = f"{base_market}-updown-15m-{window_ts}"
+
+    event = get_market_by_slug(slug)
+    tokens = extract_token_ids(event) if event else None
+    if not tokens or len(tokens) < 2:
+        print(f"  [{market.upper()}] Arb Kalshi: mercado Polymarket não encontrado para slug {slug}.", flush=True)
+        return False
+
+    print(f"  [{market.upper()}] Arb Kalshi: usando ticker {kalshi_ticker} | slug {slug}", flush=True)
 
     last_debug = 0.0
     while int(time.time()) < close_time - HARD_DEADLINE_T:
@@ -636,7 +687,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         return False
 
     if active_mode == "arb_kalshi":
-        return _run_kalshi_arb_cycle(config, market, window_ts, close_time, slug)
+        return _run_kalshi_arb_cycle(config, market)
 
     while True:
         secs = seconds_until_close(window_ts, window_sec)

@@ -75,10 +75,28 @@ def get_balance(api_key_id: str, private_key_pem: str) -> float:
     return float(balance_cents or 0) / 100.0
 
 
-def get_markets(api_key_id: str, private_key_pem: str, status: str = "open", limit: int = 200, cursor: str = "") -> dict:
+def get_markets(
+    api_key_id: str,
+    private_key_pem: str,
+    status: str = "open",
+    limit: int = 200,
+    cursor: str = "",
+    series_ticker: str | None = None,
+    min_close_ts: int | None = None,
+    max_close_ts: int | None = None,
+    tickers: str | None = None,
+) -> dict:
     params = {"status": status, "limit": limit}
     if cursor:
         params["cursor"] = cursor
+    if series_ticker:
+        params["series_ticker"] = series_ticker
+    if min_close_ts is not None:
+        params["min_close_ts"] = int(min_close_ts)
+    if max_close_ts is not None:
+        params["max_close_ts"] = int(max_close_ts)
+    if tickers:
+        params["tickers"] = tickers
     return kalshi_get(api_key_id, private_key_pem, "/markets", params=params)
 
 
