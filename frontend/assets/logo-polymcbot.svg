@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="PolyMCBOT logo">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#29d6b7"/>
+      <stop offset="100%" stop-color="#4f7dff"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0f1116"/>
+      <stop offset="100%" stop-color="#1b2230"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 .35 0"/>
+      <feBlend in="SourceGraphic" mode="normal"/>
+    </filter>
+  </defs>
+
+  <!-- Backplate -->
+  <rect x="64" y="64" width="896" height="896" rx="180" fill="url(#g2)"/>
+
+  <!-- Hexagon core -->
+  <g filter="url(#soft)">
+    <path d="M512 170 L776 322 L776 702 L512 854 L248 702 L248 322 Z" fill="url(#g1)"/>
+  </g>
+
+  <!-- Inner panel -->
+  <path d="M512 230 L722 352 L722 672 L512 794 L302 672 L302 352 Z" fill="#0f1116"/>
+
+  <!-- Stylized candlesticks -->
+  <g fill="#29d6b7">
+    <rect x="380" y="420" width="36" height="180" rx="10"/>
+    <rect x="600" y="360" width="36" height="240" rx="10"/>
+  </g>
+  <g stroke="#4f7dff" stroke-width="14" stroke-linecap="round">
+    <line x1="398" y1="360" x2="398" y2="680"/>
+    <line x1="618" y1="300" x2="618" y2="700"/>
+  </g>
+
+  <!-- Market arc + node -->
+  <path d="M340 530 C420 430, 604 430, 684 530" fill="none" stroke="#29d6b7" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="684" cy="530" r="16" fill="#4f7dff"/>
+
+  <!-- Subtle MC letters -->
+  <g fill="#e8eefc" opacity="0.9">
+    <path d="M420 710 L420 640 L448 680 L476 640 L476 710" />
+    <path d="M548 710 L548 640 L610 640 L610 664 L576 664 L576 686 L610 686 L610 710" />
+  </g>
+</svg>
