@@ -12,6 +12,7 @@ import sys
 import time
 import threading
 import statistics
+import math
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -620,13 +621,21 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
 
         poly_amount = max_contracts * poly_price
         kalshi_amount = max_contracts * kalshi_price
+        if poly_amount < POLY_MIN_ORDER_USD:
+            min_contracts = int(math.ceil(POLY_MIN_ORDER_USD / max(poly_price, 0.0001)))
+            if kalshi_size:
+                min_contracts = min(min_contracts, int(kalshi_size))
+            poly_amount = min_contracts * poly_price
+            kalshi_amount = min_contracts * kalshi_price
+            max_contracts = min_contracts
         if poly_amount < POLY_MIN_ORDER_USD or poly_amount > api_bankroll or kalshi_amount > kalshi_balance:
             now = time.time()
             if now - last_debug >= 30:
                 last_debug = now
                 print(
-                    f"  [{market.upper()}] Arb Kalshi: saldo insuficiente | Poly ${api_bankroll:.2f} Kalshi ${kalshi_balance:.2f} | "
-                    f"necessário Poly ${poly_amount:.2f} Kalshi ${kalshi_amount:.2f}",
+                    f"  [{market.upper()}] Arb Kalshi: saldo insuficiente ou abaixo do mínimo | "
+                    f"Poly ${api_bankroll:.2f} Kalshi ${kalshi_balance:.2f} | "
+                    f"necessário Poly ${poly_amount:.2f} (min ${POLY_MIN_ORDER_USD:.2f}) Kalshi ${kalshi_amount:.2f}",
                     flush=True,
                 )
             time.sleep(ARB_KALSHI_POLL_INTERVAL)
