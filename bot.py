@@ -76,6 +76,7 @@ MOON_CVD_TRADE_LIMIT = 500        # MOON: trades recentes usados para CVD
 ARB_KALSHI_MIN_PROFIT_PCT = 0.05  # Arb Kalshi: lucro mínimo (5%)
 ARB_KALSHI_SLIPPAGE_PCT = 0.01    # Arb Kalshi: buffer extra para slippage/fees
 ARB_KALSHI_POLL_INTERVAL = 2
+ARB_KALSHI_POLY_PRICE_BUFFER = 0.002  # Arb Kalshi: limite extra no preço Poly (evita slippage)
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -368,6 +369,27 @@ def place_fok_order_at_price(client, token_id: str, amount_usd: float, price_cap
         return False
 
 
+def place_fok_limit_order(client, token_id: str, size: int, price_cap: float) -> bool:
+    """Envia uma ordem LIMIT FOK com quantidade fixa (shares)."""
+    from py_clob_client.clob_types import OrderArgs, OrderType
+    from py_clob_client.order_builder.constants import BUY
+
+    if size <= 0:
+        print(f"  FOK limit: size inválido ({size}), pulando.", flush=True)
+        return False
+    cap = min(max(0.01, float(price_cap)), MAX_TOKEN_PRICE)
+    try:
+        order = OrderArgs(token_id=token_id, price=cap, size=size, side=BUY)
+        signed = client.create_order(order)
+        resp = client.post_order(signed, OrderType.FOK)
+        return resp.get("status") in ("matched", "live")
+    except Exception as e:
+        print(f"  FOK limit order error: {e!s}", flush=True)
+        if "Request exception" in str(e):
+            raise
+        return False
+
+
 def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
     from py_clob_client.clob_types import OrderArgs, OrderType
     from py_clob_client.order_builder.constants import BUY
@@ -380,6 +402,25 @@ def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
     if shares < MIN_SHARES:
         shares = MIN_SHARES
 
+    try:
+        order = OrderArgs(token_id=token_id, price=limit_price, size=shares, side=BUY)
+        signed = client.create_order(order)
+        resp = client.post_order(signed, OrderType.GTC)
+        return resp.get("status") in ("live", "matched")
+    except Exception as e:
+        print(f"  Limit order error: {e!s}", flush=True)
+        if "Request exception" in str(e):
+            raise
+        return False
+
+
+def place_limit_order_exact(client, token_id: str, price: float, shares: float) -> bool:
+    from py_clob_client.clob_types import OrderArgs, OrderType
+    from py_clob_client.order_builder.constants import BUY
+
+    if shares <= 0:
+        return False
+    limit_price = min(float(price), MAX_TOKEN_PRICE)
     try:
         order = OrderArgs(token_id=token_id, price=limit_price, size=shares, side=BUY)
         signed = client.create_order(order)
@@ -614,37 +655,43 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
             time.sleep(ARB_KALSHI_POLL_INTERVAL)
             continue
 
-        max_contracts = int(bet_budget / total_cost)
+        contracts = int(bet_budget / total_cost)
         if kalshi_size:
-            max_contracts = min(max_contracts, int(kalshi_size))
-        if max_contracts < 1:
+            contracts = min(contracts, int(kalshi_size))
+        if contracts < 1:
             time.sleep(ARB_KALSHI_POLL_INTERVAL)
             continue
 
-        poly_amount = max_contracts * poly_price
-        kalshi_amount = max_contracts * kalshi_price
-        if poly_amount < POLY_MIN_ORDER_USD:
-            min_contracts = int(math.ceil(POLY_MIN_ORDER_USD / max(poly_price, 0.0001)))
+        min_contracts = int(math.ceil(POLY_MIN_ORDER_USD / max(poly_price, 0.0001)))
+        if contracts < min_contracts:
+            contracts = min_contracts
             if kalshi_size:
-                min_contracts = min(min_contracts, int(kalshi_size))
-            poly_amount = min_contracts * poly_price
-            kalshi_amount = min_contracts * kalshi_price
-            max_contracts = min_contracts
-        if poly_amount < POLY_MIN_ORDER_USD or poly_amount > api_bankroll or kalshi_amount > kalshi_balance:
+                contracts = min(contracts, int(kalshi_size))
+
+        poly_amount = contracts * poly_price
+        kalshi_amount = contracts * kalshi_price
+        total_amount = poly_amount + kalshi_amount
+        if (
+            poly_amount < POLY_MIN_ORDER_USD
+            or poly_amount > api_bankroll
+            or kalshi_amount > kalshi_balance
+            or total_amount > bet_budget
+        ):
             now = time.time()
             if now - last_debug >= 30:
                 last_debug = now
                 print(
                     f"  [{market.upper()}] Arb Kalshi: saldo insuficiente ou abaixo do mínimo | "
                     f"Poly ${api_bankroll:.2f} Kalshi ${kalshi_balance:.2f} | "
-                    f"necessário Poly ${poly_amount:.2f} (min ${POLY_MIN_ORDER_USD:.2f}) Kalshi ${kalshi_amount:.2f}",
+                    f"necessário Poly ${poly_amount:.2f} (min ${POLY_MIN_ORDER_USD:.2f}) Kalshi ${kalshi_amount:.2f} | "
+                    f"budget ${bet_budget:.2f}",
                     flush=True,
                 )
             time.sleep(ARB_KALSHI_POLL_INTERVAL)
             continue
 
         print(
-            f"  [{market.upper()}] ARB KALSHI: Poly {trade_direction.upper()} @ {poly_price:.2f} + Kalshi {kalshi_side.upper()} @ {kalshi_price:.2f} | N={max_contracts} | lucro {((1-total_cost)*100):.2f}%",
+            f"  [{market.upper()}] ARB KALSHI: Poly {trade_direction.upper()} @ {poly_price:.2f} + Kalshi {kalshi_side.upper()} @ {kalshi_price:.2f} | N={contracts} | lucro {((1-total_cost)*100):.2f}%",
             flush=True,
         )
 
@@ -652,23 +699,7 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
             _last_bet_window_by_market[market] = window_ts
             return True
 
-        # Executar primeiro Kalshi (FOK), depois Polymarket
-        try:
-            create_order(
-                api_key_id,
-                private_key_pem,
-                kalshi_ticker,
-                kalshi_side,
-                max_contracts,
-                kalshi_price,
-                time_in_force="fill_or_kill",
-            )
-        except Exception as e:
-            print(f"  [{market.upper()}] Arb Kalshi: falha Kalshi {e!s}", flush=True)
-            time.sleep(ARB_KALSHI_POLL_INTERVAL)
-            continue
-
-        # Polymarket
+        # Polymarket primeiro (FOK limit por quantidade), depois Kalshi
         client = create_clob_client()
         _sync_balance_allowance(client)
         token_id = tokens[0] if trade_direction == "up" else tokens[1]
@@ -689,21 +720,39 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
                     ok = False
                 else:
                     # Price cap pequeno para evitar slippage acima do cálculo
-                    cap = min(poly_now + 0.005, MAX_TOKEN_PRICE)
-                    ok = place_fok_order_at_price(client, token_id, poly_amount, cap)
+                    cap = min(poly_now + ARB_KALSHI_POLY_PRICE_BUFFER, MAX_TOKEN_PRICE)
+                    ok = place_fok_limit_order(client, token_id, contracts, cap)
             if not ok:
-                ok = place_limit_order(client, token_id, poly_amount)
+                print(f"  [{market.upper()}] Arb Kalshi: Polymarket FOK falhou, não enviando limit para evitar desbalanceamento.", flush=True)
         except Exception as e:
             print(f"  [{market.upper()}] Arb Kalshi: falha Polymarket {e!s}", flush=True)
             ok = False
 
-        if ok:
-            print(f"  [{market.upper()}] Arb Kalshi executado | N={max_contracts}", flush=True)
-            _last_bet_window_by_market[market] = window_ts
-            return True
-        else:
-            print(f"  [{market.upper()}] Arb Kalshi: Polymarket falhou após Kalshi. Revise risco.", flush=True)
+        if not ok:
+            time.sleep(ARB_KALSHI_POLL_INTERVAL)
+            continue
+
+        # Kalshi (FOK)
+        try:
+            kalshi_resp = create_order(
+                api_key_id,
+                private_key_pem,
+                kalshi_ticker,
+                kalshi_side,
+                contracts,
+                kalshi_price,
+                time_in_force="fill_or_kill",
+            )
+            kalshi_status = kalshi_resp.get("status") or kalshi_resp.get("order", {}).get("status")
+            if kalshi_status:
+                print(f"  [{market.upper()}] Arb Kalshi: Kalshi status {kalshi_status}", flush=True)
+        except Exception as e:
+            print(f"  [{market.upper()}] Arb Kalshi: falha Kalshi após Polymarket {e!s}", flush=True)
             return False
+
+        print(f"  [{market.upper()}] Arb Kalshi executado | N={contracts}", flush=True)
+        _last_bet_window_by_market[market] = window_ts
+        return True
 
     return False
 
