@@ -340,6 +340,32 @@ def place_fok_order(client, token_id: str, amount_usd: float) -> bool:
         return False
 
 
+def place_fok_order_at_price(client, token_id: str, amount_usd: float, price_cap: float) -> bool:
+    from py_clob_client.clob_types import MarketOrderArgs, OrderType
+    from py_clob_client.order_builder.constants import BUY
+
+    if amount_usd < POLY_MIN_ORDER_USD:
+        print(f"  FOK order: valor ${amount_usd:.2f} abaixo do mínimo (${POLY_MIN_ORDER_USD:.2f}), pulando.", flush=True)
+        return False
+    cap = min(max(0.01, float(price_cap)), MAX_TOKEN_PRICE)
+    mo = MarketOrderArgs(
+        token_id=token_id,
+        amount=amount_usd,
+        side=BUY,
+        price=cap,
+        order_type=OrderType.FOK,
+    )
+    try:
+        signed = client.create_market_order(mo)
+        resp = client.post_order(signed, OrderType.FOK)
+        return resp.get("status") in ("matched", "live")
+    except Exception as e:
+        print(f"  FOK order error: {e!s}", flush=True)
+        if "Request exception" in str(e):
+            raise
+        return False
+
+
 def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
     from py_clob_client.clob_types import OrderArgs, OrderType
     from py_clob_client.order_builder.constants import BUY
@@ -369,17 +395,27 @@ def _kalshi_best_ask(orderbook: dict, side: str) -> tuple[Optional[float], Optio
     levels = (orderbook.get("orderbook_fp") or orderbook.get("orderbook") or {})
     yes_bids = levels.get("yes_dollars") or []
     no_bids = levels.get("no_dollars") or []
+    # Legacy fallback (centavos): pode vir como "yes"/"no"
+    if not yes_bids and not no_bids:
+        yes_bids = levels.get("yes") or []
+        no_bids = levels.get("no") or []
     if side == "yes":
         if not no_bids:
             return (None, None)
         best_no_bid = max(no_bids, key=lambda x: float(x[0]))
-        price = 1.0 - float(best_no_bid[0])
+        bid = float(best_no_bid[0])
+        if bid > 1.0:
+            bid = bid / 100.0
+        price = 1.0 - bid
         size = int(float(best_no_bid[1]))
         return (max(price, 0.01), max(size, 0))
     if not yes_bids:
         return (None, None)
     best_yes_bid = max(yes_bids, key=lambda x: float(x[0]))
-    price = 1.0 - float(best_yes_bid[0])
+    bid = float(best_yes_bid[0])
+    if bid > 1.0:
+        bid = bid / 100.0
+    price = 1.0 - bid
     size = int(float(best_yes_bid[1]))
     return (max(price, 0.01), max(size, 0))
 
@@ -627,7 +663,22 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
         token_id = tokens[0] if trade_direction == "up" else tokens[1]
         ok = False
         try:
-            ok = place_fok_order(client, token_id, poly_amount)
+            # Revalidar preço Polymarket imediatamente antes de enviar
+            price_up_now = get_token_price(tokens[0], "BUY") or (get_token_price_from_event(event, "up") if event else None)
+            price_down_now = get_token_price(tokens[1], "BUY") or (get_token_price_from_event(event, "down") if event else None)
+            if price_up_now is None or price_down_now is None:
+                print(f"  [{market.upper()}] Arb Kalshi: preço Polymarket indisponível no envio.", flush=True)
+                ok = False
+            else:
+                poly_now = float(price_up_now) if trade_direction == "up" else float(price_down_now)
+                total_now = poly_now + kalshi_price
+                if total_now > (1.0 - ARB_KALSHI_MIN_PROFIT_PCT):
+                    print(f"  [{market.upper()}] Arb Kalshi: oportunidade sumiu (soma {total_now:.2f}).", flush=True)
+                    ok = False
+                else:
+                    # Price cap pequeno para evitar slippage acima do cálculo
+                    cap = min(poly_now + 0.01, MAX_TOKEN_PRICE)
+                    ok = place_fok_order_at_price(client, token_id, poly_amount, cap)
             if not ok:
                 ok = place_limit_order(client, token_id, poly_amount)
         except Exception as e:
