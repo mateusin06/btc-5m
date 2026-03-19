@@ -76,7 +76,6 @@ MOON_CVD_TRADE_LIMIT = 500        # MOON: trades recentes usados para CVD
 ARB_KALSHI_MIN_PROFIT_PCT = 0.05  # Arb Kalshi: lucro mínimo (5%)
 ARB_KALSHI_SLIPPAGE_PCT = 0.01    # Arb Kalshi: buffer extra para slippage/fees
 ARB_KALSHI_POLL_INTERVAL = 2
-ARB_KALSHI_POLY_PRICE_BUFFER = 0.002  # Arb Kalshi: limite extra no preço Poly (evita slippage)
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -390,6 +389,28 @@ def place_fok_limit_order(client, token_id: str, size: int, price_cap: float) ->
         return False
 
 
+def _poly_available_shares(client, token_id: str, price_cap: float) -> tuple[float, Optional[float]]:
+    """Retorna (shares_disponiveis, best_ask) até o preço cap."""
+    try:
+        book = client.get_order_book(token_id)
+    except Exception:
+        return (0.0, None)
+    asks = getattr(book, "asks", None) or []
+    total = 0.0
+    best_ask = None
+    for ask in asks:
+        try:
+            price = float(getattr(ask, "price", 0) or 0)
+            size = float(getattr(ask, "size", 0) or 0)
+        except Exception:
+            continue
+        if best_ask is None or price < best_ask:
+            best_ask = price
+        if price <= price_cap:
+            total += size
+    return (total, best_ask)
+
+
 def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
     from py_clob_client.clob_types import OrderArgs, OrderType
     from py_clob_client.order_builder.constants import BUY
@@ -584,6 +605,7 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     print(f"  [{market.upper()}] Arb Kalshi: usando ticker {kalshi_ticker} | slug {slug}", flush=True)
 
     last_debug = 0.0
+    last_liq_log = 0.0
     while int(time.time()) < close_time - HARD_DEADLINE_T:
         # Preços Polymarket
         price_up = get_token_price(tokens[0], "BUY") or (get_token_price_from_event(event, "up") if event else None)
@@ -719,9 +741,26 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
                     print(f"  [{market.upper()}] Arb Kalshi: oportunidade sumiu (soma {total_now:.2f}).", flush=True)
                     ok = False
                 else:
-                    # Price cap pequeno para evitar slippage acima do cálculo
-                    cap = min(poly_now + ARB_KALSHI_POLY_PRICE_BUFFER, MAX_TOKEN_PRICE)
-                    ok = place_fok_limit_order(client, token_id, contracts, cap)
+                    # Cap máximo mantendo lucro mínimo + slippage
+                    max_poly_price = min_total_now - kalshi_price
+                    cap = min(max_poly_price, MAX_TOKEN_PRICE)
+                    if cap <= 0:
+                        ok = False
+                    else:
+                        available, best_ask = _poly_available_shares(client, token_id, cap)
+                        if available < contracts:
+                            now = time.time()
+                            if now - last_liq_log >= 30:
+                                last_liq_log = now
+                                print(
+                                    f"  [{market.upper()}] Arb Kalshi: liquidez insuficiente na Poly | "
+                                    f"cap {cap:.2f} best {best_ask if best_ask is not None else 'n/a'} | "
+                                    f"need {contracts} have {available:.2f}",
+                                    flush=True,
+                                )
+                            ok = False
+                        else:
+                            ok = place_fok_limit_order(client, token_id, contracts, cap)
             if not ok:
                 print(f"  [{market.upper()}] Arb Kalshi: Polymarket FOK falhou, não enviando limit para evitar desbalanceamento.", flush=True)
         except Exception as e:
