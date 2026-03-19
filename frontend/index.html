@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="icon" type="image/svg+xml" href="/frontend/assets/logo-polymcbot.svg" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='4' y='4' width='56' height='56' rx='12' fill='%230f1116'/><path d='M32 10 L50 20 L50 44 L32 54 L14 44 L14 20 Z' fill='%2329d6b7'/><path d='M32 16 L46 24 L46 40 L32 48 L18 40 L18 24 Z' fill='%230f1116'/><rect x='25' y='26' width='4' height='16' rx='1' fill='%2329d6b7'/><rect x='35' y='22' width='4' height='20' rx='1' fill='%234f7dff'/></svg>" />
   <script>
     tailwind.config = {
       theme: {
@@ -36,7 +36,15 @@
   <!-- Tela de Login / Cadastro (visível por padrão até o init carregar) -->
   <div id="auth-screen" class="max-w-md mx-auto px-4 py-16">
     <div class="bg-panel rounded-xl border border-border p-8">
-      <h1 class="text-2xl font-bold text-white mb-2">Polymarket Bot</h1>
+      <div class="mb-3 flex justify-center">
+        <svg aria-label="PolyMCBOT" class="w-16 h-16" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="4" width="56" height="56" rx="12" fill="#0f1116"/>
+          <path d="M32 10 L50 20 L50 44 L32 54 L14 44 L14 20 Z" fill="#29d6b7"/>
+          <path d="M32 16 L46 24 L46 40 L32 48 L18 40 L18 24 Z" fill="#0f1116"/>
+          <rect x="25" y="26" width="4" height="16" rx="1" fill="#29d6b7"/>
+          <rect x="35" y="22" width="4" height="20" rx="1" fill="#4f7dff"/>
+        </svg>
+      </div>
       <p class="text-gray-400 text-sm mb-6">Entre ou crie uma conta para acessar sua config e o bot.</p>
       <div id="auth-error" class="hidden text-danger text-sm mb-4"></div>
       <div class="space-y-4">
@@ -60,7 +68,15 @@
   <div id="dashboard" class="hidden max-w-5xl mx-auto px-4 py-8">
   <div class="flex justify-between items-center mb-10">
     <div>
-      <h1 class="text-3xl font-bold text-white tracking-tight">Polymarket Bot</h1>
+      <div class="flex items-center">
+        <svg aria-label="PolyMCBOT" class="w-10 h-10" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="4" width="56" height="56" rx="12" fill="#0f1116"/>
+          <path d="M32 10 L50 20 L50 44 L32 54 L14 44 L14 20 Z" fill="#29d6b7"/>
+          <path d="M32 16 L46 24 L46 40 L32 48 L18 40 L18 24 Z" fill="#0f1116"/>
+          <rect x="25" y="26" width="4" height="16" rx="1" fill="#29d6b7"/>
+          <rect x="35" y="22" width="4" height="20" rx="1" fill="#4f7dff"/>
+        </svg>
+      </div>
       <p class="text-gray-400 mt-1">Dashboard — config, modos e estatísticas</p>
     </div>
     <div class="flex items-center gap-3">
