@@ -789,22 +789,45 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
             time.sleep(ARB_KALSHI_POLL_INTERVAL)
             continue
 
-        # Kalshi (FOK)
-        try:
-            kalshi_resp = create_order(
-                api_key_id,
-                private_key_pem,
-                kalshi_ticker,
-                kalshi_side,
-                contracts,
-                kalshi_price,
-                time_in_force="fill_or_kill",
-            )
-            kalshi_status = kalshi_resp.get("status") or kalshi_resp.get("order", {}).get("status")
-            if kalshi_status:
-                print(f"  [{market.upper()}] Arb Kalshi: Kalshi status {kalshi_status}", flush=True)
-        except Exception as e:
-            print(f"  [{market.upper()}] Arb Kalshi: falha Kalshi após Polymarket {e!s}", flush=True)
+        # Kalshi (FOK) - com até 3 tentativas após Poly
+        kalshi_ok = False
+        last_err = None
+        for attempt in range(3):
+            try:
+                # Revalidar preço Kalshi: só aceita mesmo preço ou melhor (menor)
+                try:
+                    orderbook_now = get_orderbook(api_key_id, private_key_pem, kalshi_ticker, depth=1)
+                    k_yes_now, _ = _kalshi_best_ask(orderbook_now, "yes")
+                    k_no_now, _ = _kalshi_best_ask(orderbook_now, "no")
+                    k_now = k_yes_now if kalshi_side == "yes" else k_no_now
+                except Exception:
+                    k_now = None
+                if k_now is None or k_now > kalshi_price:
+                    time.sleep(ARB_KALSHI_POLL_INTERVAL)
+                    continue
+
+                kalshi_resp = create_order(
+                    api_key_id,
+                    private_key_pem,
+                    kalshi_ticker,
+                    kalshi_side,
+                    contracts,
+                    kalshi_price,
+                    time_in_force="fill_or_kill",
+                )
+                kalshi_status = kalshi_resp.get("status") or kalshi_resp.get("order", {}).get("status")
+                if kalshi_status:
+                    print(f"  [{market.upper()}] Arb Kalshi: Kalshi status {kalshi_status}", flush=True)
+                kalshi_ok = True
+                break
+            except Exception as e:
+                last_err = e
+                time.sleep(ARB_KALSHI_POLL_INTERVAL)
+
+        if not kalshi_ok:
+            print(f"  [{market.upper()}] Arb Kalshi: falha Kalshi após Polymarket {last_err!s}", flush=True)
+            # Evita repetir Poly na mesma janela quando Kalshi falha depois
+            _last_bet_window_by_market[market] = window_ts
             return False
 
         print(f"  [{market.upper()}] Arb Kalshi executado | N={contracts}", flush=True)
