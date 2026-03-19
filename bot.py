@@ -789,10 +789,12 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
             time.sleep(ARB_KALSHI_POLL_INTERVAL)
             continue
 
-        # Kalshi (FOK) - com até 3 tentativas após Poly
+        # Kalshi (FOK) - após Poly: tentar até o final da janela no mesmo preço ou melhor
         kalshi_ok = False
         last_err = None
-        for attempt in range(3):
+        attempt = 0
+        while int(time.time()) < close_time - HARD_DEADLINE_T:
+            attempt += 1
             try:
                 # Revalidar preço Kalshi: só aceita mesmo preço ou melhor (menor)
                 try:
@@ -803,9 +805,18 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
                 except Exception:
                     k_now = None
                 if k_now is None or k_now > kalshi_price:
+                    print(
+                        f"  [{market.upper()}] Arb Kalshi: tentativa {attempt} aguardando preço "
+                        f"(atual {k_now if k_now is not None else 'n/a'} > alvo {kalshi_price:.2f})",
+                        flush=True,
+                    )
                     time.sleep(ARB_KALSHI_POLL_INTERVAL)
                     continue
 
+                print(
+                    f"  [{market.upper()}] Arb Kalshi: tentativa {attempt} enviando ordem @ {kalshi_price:.2f}",
+                    flush=True,
+                )
                 kalshi_resp = create_order(
                     api_key_id,
                     private_key_pem,
@@ -822,6 +833,10 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
                 break
             except Exception as e:
                 last_err = e
+                print(
+                    f"  [{market.upper()}] Arb Kalshi: tentativa {attempt} falhou ({e!s}), tentando novamente...",
+                    flush=True,
+                )
                 time.sleep(ARB_KALSHI_POLL_INTERVAL)
 
         if not kalshi_ok:
