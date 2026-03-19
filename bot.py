@@ -73,7 +73,8 @@ MOON_MIN_VOLATILITY_PCT = 0.02    # MOON: volatilidade mínima (%) nos últimos 
 MOON_CVD_NORM_MIN = 0.08          # MOON: CVD normalizado mínimo (|cvd|/vol)
 MOON_CVD_MOMENTUM_MIN = 0.03      # MOON: momentum mínimo do CVD normalizado
 MOON_CVD_TRADE_LIMIT = 500        # MOON: trades recentes usados para CVD
-ARB_KALSHI_MIN_PROFIT_PCT = 0.03  # Arb Kalshi: lucro mínimo (3%)
+ARB_KALSHI_MIN_PROFIT_PCT = 0.05  # Arb Kalshi: lucro mínimo (5%)
+ARB_KALSHI_SLIPPAGE_PCT = 0.01    # Arb Kalshi: buffer extra para slippage/fees
 ARB_KALSHI_POLL_INTERVAL = 2
 
 CLOB_HOST = "https://clob.polymarket.com"
@@ -563,13 +564,14 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
             time.sleep(ARB_KALSHI_POLL_INTERVAL)
             continue
 
-        # Cenários de arbitragem
+        # Cenários de arbitragem (com buffer extra para slippage/fees)
+        min_total_cost = 1.0 - (ARB_KALSHI_MIN_PROFIT_PCT + ARB_KALSHI_SLIPPAGE_PCT)
         cand1_cost = float(price_up) + float(k_no_ask)   # YES Poly + NO Kalshi
         cand2_cost = float(price_down) + float(k_yes_ask)  # NO Poly + YES Kalshi
         best = None
-        if cand1_cost <= (1.0 - ARB_KALSHI_MIN_PROFIT_PCT):
+        if cand1_cost <= min_total_cost:
             best = ("up", "no", float(price_up), float(k_no_ask), k_no_size)
-        if cand2_cost <= (1.0 - ARB_KALSHI_MIN_PROFIT_PCT):
+        if cand2_cost <= min_total_cost:
             if best is None or cand2_cost < cand1_cost:
                 best = ("down", "yes", float(price_down), float(k_yes_ask), k_yes_size)
         if not best:
@@ -681,12 +683,13 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
             else:
                 poly_now = float(price_up_now) if trade_direction == "up" else float(price_down_now)
                 total_now = poly_now + kalshi_price
-                if total_now > (1.0 - ARB_KALSHI_MIN_PROFIT_PCT):
+                min_total_now = 1.0 - (ARB_KALSHI_MIN_PROFIT_PCT + ARB_KALSHI_SLIPPAGE_PCT)
+                if total_now > min_total_now:
                     print(f"  [{market.upper()}] Arb Kalshi: oportunidade sumiu (soma {total_now:.2f}).", flush=True)
                     ok = False
                 else:
                     # Price cap pequeno para evitar slippage acima do cálculo
-                    cap = min(poly_now + 0.01, MAX_TOKEN_PRICE)
+                    cap = min(poly_now + 0.005, MAX_TOKEN_PRICE)
                     ok = place_fok_order_at_price(client, token_id, poly_amount, cap)
             if not ok:
                 ok = place_limit_order(client, token_id, poly_amount)
