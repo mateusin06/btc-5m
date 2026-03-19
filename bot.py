@@ -366,7 +366,7 @@ def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
 
 def _kalshi_best_ask(orderbook: dict, side: str) -> tuple[Optional[float], Optional[int]]:
     """Retorna (best_ask_price, max_count) para compra de YES/NO em Kalshi."""
-    levels = (orderbook.get("orderbook_fp") or {})
+    levels = (orderbook.get("orderbook_fp") or orderbook.get("orderbook") or {})
     yes_bids = levels.get("yes_dollars") or []
     no_bids = levels.get("no_dollars") or []
     if side == "yes":
@@ -384,45 +384,32 @@ def _kalshi_best_ask(orderbook: dict, side: str) -> tuple[Optional[float], Optio
     return (max(price, 0.01), max(size, 0))
 
 
-def _find_kalshi_15m_market(api_key_id: str, private_key_pem: str, market: str, target_close_ts: int) -> Optional[dict]:
-    """Encontra o market aberto da Kalshi mais próximo do fechamento da janela 15m."""
-    try:
-        from kalshi_api import get_markets
-        from datetime import datetime, timezone
-    except Exception:
-        return None
-    keyword = "BTC" if market.startswith("btc") else "ETH"
-    alt_keyword = "Bitcoin" if keyword == "BTC" else "Ethereum"
-    best = None
-    best_diff = None
-    cursor = ""
-    for _ in range(5):
-        data = get_markets(api_key_id, private_key_pem, status="open", limit=200, cursor=cursor)
-        markets = data.get("markets") or []
-        for m in markets:
-            title = (m.get("title") or "") + " " + (m.get("subtitle") or "")
-            if keyword not in title and alt_keyword not in title:
-                continue
-            if "15" not in title or ("min" not in title and "minute" not in title):
-                continue
-            close_str = m.get("close_time") or ""
-            if not close_str:
-                continue
-            try:
-                close_dt = datetime.fromisoformat(close_str.replace("Z", "+00:00"))
-            except Exception:
-                continue
-            close_ts = int(close_dt.replace(tzinfo=timezone.utc).timestamp())
-            diff = abs(close_ts - target_close_ts)
-            if best is None or diff < (best_diff or diff + 1):
-                best = m
-                best_diff = diff
-        cursor = data.get("cursor") or ""
-        if not cursor:
-            break
-    if best_diff is not None and best_diff <= 120:
-        return best
-    return None
+def _kalshi_ticker_from_close(market: str, close_ts: int, tz_offset_hours: int = 0) -> str:
+    """Monta o ticker Kalshi kxbtc15m-26mar182030 a partir do close_ts."""
+    from datetime import datetime, timezone, timedelta
+    import calendar
+
+    dt = datetime.fromtimestamp(close_ts, tz=timezone.utc) + timedelta(hours=tz_offset_hours)
+    day = f"{dt.day:02d}"
+    mon = calendar.month_abbr[dt.month].lower()
+    hh = f"{dt.hour:02d}"
+    mm = f"{dt.minute:02d}"
+    ss = f"{dt.second:02d}"
+    base = "kxbtc15m" if market.startswith("btc") else "kxeth15m"
+    return f"{base}-{day}{mon}{hh}{mm}{ss}"
+
+
+def _kalshi_candidate_tickers(market: str, close_ts: int) -> list[str]:
+    # Tenta UTC e offsets comuns (ET/UTC-3) para casar com o ticker.
+    offsets = [0, -3, -4, -5]
+    out = []
+    seen = set()
+    for off in offsets:
+        t = _kalshi_ticker_from_close(market, close_ts, tz_offset_hours=off)
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
 
 
 def _run_kalshi_arb_cycle(config: Config, market: str, window_ts: int, close_time: int, slug: str) -> bool:
@@ -441,19 +428,25 @@ def _run_kalshi_arb_cycle(config: Config, market: str, window_ts: int, close_tim
         return False
 
     try:
-        kalshi_market = _find_kalshi_15m_market(api_key_id, private_key_pem, market, close_time)
-    except Exception as e:
-        print(f"  [{market.upper()}] Arb Kalshi: erro ao ler chave Kalshi (verifique PEM). {e!s}", flush=True)
-        return False
-    if not kalshi_market:
-        print(f"  [{market.upper()}] Arb Kalshi: market 15m não encontrado na Kalshi.", flush=True)
-        return False
-    kalshi_ticker = kalshi_market.get("ticker")
-
-    try:
         from kalshi_api import get_balance as kalshi_get_balance, get_orderbook, create_order
     except Exception as e:
         print(f"  [{market.upper()}] Arb Kalshi: erro ao carregar módulo Kalshi: {e!s}", flush=True)
+        return False
+
+    kalshi_ticker = None
+    try:
+        for t in _kalshi_candidate_tickers(market, close_time):
+            try:
+                _ = get_orderbook(api_key_id, private_key_pem, t, depth=1)
+                kalshi_ticker = t
+                break
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"  [{market.upper()}] Arb Kalshi: erro ao ler chave Kalshi (verifique PEM). {e!s}", flush=True)
+        return False
+    if not kalshi_ticker:
+        print(f"  [{market.upper()}] Arb Kalshi: market 15m não encontrado na Kalshi.", flush=True)
         return False
 
     while int(time.time()) < close_time - HARD_DEADLINE_T:
