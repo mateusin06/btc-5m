@@ -173,6 +173,36 @@ def _config_from_supabase(user_id: str, token: str) -> dict:
         return {}
 
 
+def _config_from_supabase_by_email_admin(email: str) -> dict:
+    try:
+        if not email:
+            return {}
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/user_config",
+            params={"email": f"eq.{email}", "select": "*"},
+            headers=_admin_headers(),
+            timeout=10,
+        )
+        if r.status_code != 200 or not r.json():
+            return {}
+        return dict(r.json()[0])
+    except Exception:
+        return {}
+
+
+def _relink_user_id_admin(email: str, new_user_id: str) -> None:
+    if not email or not new_user_id:
+        return
+    r = requests.patch(
+        f"{SUPABASE_URL}/rest/v1/user_config",
+        params={"email": f"eq.{email}"},
+        headers=_admin_headers(),
+        json={"user_id": new_user_id},
+        timeout=10,
+    )
+    r.raise_for_status()
+
+
 def _config_to_supabase(user_id: str, token: str, data: dict, email: Optional[str] = None) -> None:
     try:
         payload = {k: v for k, v in data.items() if v is not None}
@@ -477,6 +507,15 @@ def get_config(user: dict = Depends(get_current_user)):
     """Retorna config do usuário no Supabase (sem expor chave privada nem secret)."""
     row = _config_from_supabase(user["id"], user["_token"])
     if not row:
+        email = (user.get("email") or "").strip()
+        if email:
+            admin_row = _config_from_supabase_by_email_admin(email)
+            if admin_row and admin_row.get("user_id") != user["id"]:
+                try:
+                    _relink_user_id_admin(email, user["id"])
+                    row = _config_from_supabase(user["id"], user["_token"])
+                except Exception:
+                    pass
         _ensure_trial_row(user["id"], user["_token"], user.get("email", ""))
         row = _config_from_supabase(user["id"], user["_token"])
     if not row:

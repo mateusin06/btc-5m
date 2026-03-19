@@ -684,7 +684,11 @@
         if (c.bet_90_95 != null) getEl('bot-bet-90-95').value = c.bet_90_95;
         if (c.arbitragem_pct != null) getEl('bot-arbitragem-pct').value = c.arbitragem_pct;
         if (c.aggressive_bet_pct != null) getEl('bot-aggressive-pct').value = c.aggressive_bet_pct;
-        getEl('kalshi-status').textContent = c.has_kalshi_api_creds ? 'Credenciais Kalshi salvas.' : 'Credenciais Kalshi não salvas.';
+        if (c.has_kalshi_api_creds === undefined) {
+          getEl('kalshi-status').textContent = 'API Kalshi indisponível (backend desatualizado).';
+        } else {
+          getEl('kalshi-status').textContent = c.has_kalshi_api_creds ? 'Credenciais Kalshi salvas.' : 'Credenciais Kalshi não salvas.';
+        }
         getEl('input-kalshi-key').value = '';
         getEl('input-kalshi-secret').value = '';
         getEl('input-kalshi-passphrase').value = '';
@@ -1008,7 +1012,7 @@
         const v = parseFloat(getEl('bot-bet-90-95').value);
         if (!isNaN(v)) body.bet_90_95 = v;
       }
-      if (mode === 'arbitragem') {
+      if (mode === 'arbitragem' || mode === 'arb_kalshi') {
         const v = parseFloat(getEl('bot-arbitragem-pct').value);
         if (!isNaN(v)) body.arbitragem_pct = v;
       }
@@ -1026,7 +1030,11 @@
         });
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
-          throw new Error(err.detail || r.statusText);
+          const detail = err.detail;
+          const msg = (typeof detail === 'string')
+            ? detail
+            : (detail ? JSON.stringify(detail) : r.statusText);
+          throw new Error(msg);
         }
         await refreshBotStatus();
         refreshBotLogs();

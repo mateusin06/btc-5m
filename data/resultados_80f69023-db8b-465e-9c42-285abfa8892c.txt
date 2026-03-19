@@ -1,4 +1,4 @@
---- Bot iniciado em 2026-03-18T23:41:31.337375+00:00 | modo=arb_kalshi arbitragem_pct=1000% dry_run=False markets=btc15m,eth15m ---
+--- Bot iniciado em 2026-03-18T23:57:52.976243+00:00 | modo=arb_kalshi arbitragem_pct=10% dry_run=False markets=btc15m,eth15m ---
 CLI recebido: --mode='arb_kalshi' | BOT_MODE(env)='arb_kalshi'
 Wallet: signature_type=2 (Proxy/Safe) | funder=0x...227F
 Polymarket BTC15M+ETH15M Bot | Modo: arb_kalshi | Dry-run: False
