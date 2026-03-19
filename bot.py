@@ -384,12 +384,12 @@ def _kalshi_best_ask(orderbook: dict, side: str) -> tuple[Optional[float], Optio
     return (max(price, 0.01), max(size, 0))
 
 
-def _kalshi_ticker_from_close(market: str, close_ts: int, tz_offset_hours: int = 0) -> str:
+def _kalshi_ticker_from_close(market: str, close_ts: int, tz_offset_hours: int = 0, seconds_offset: int = 0) -> str:
     """Monta o ticker Kalshi kxbtc15m-26mar182030 a partir do close_ts."""
     from datetime import datetime, timezone, timedelta
     import calendar
 
-    dt = datetime.fromtimestamp(close_ts, tz=timezone.utc) + timedelta(hours=tz_offset_hours)
+    dt = datetime.fromtimestamp(close_ts, tz=timezone.utc) + timedelta(hours=tz_offset_hours, seconds=seconds_offset)
     day = f"{dt.day:02d}"
     mon = calendar.month_abbr[dt.month].lower()
     hh = f"{dt.hour:02d}"
@@ -400,15 +400,17 @@ def _kalshi_ticker_from_close(market: str, close_ts: int, tz_offset_hours: int =
 
 
 def _kalshi_candidate_tickers(market: str, close_ts: int) -> list[str]:
-    # Tenta UTC e offsets comuns (ET/UTC-3) para casar com o ticker.
+    # Tenta UTC e offsets comuns (ET/UTC-3), com variação de segundos (ex.: :30).
     offsets = [0, -3, -4, -5]
+    sec_offsets = [0, 30, -30, 60, -60]
     out = []
     seen = set()
     for off in offsets:
-        t = _kalshi_ticker_from_close(market, close_ts, tz_offset_hours=off)
-        if t not in seen:
-            seen.add(t)
-            out.append(t)
+        for sec in sec_offsets:
+            t = _kalshi_ticker_from_close(market, close_ts, tz_offset_hours=off, seconds_offset=sec)
+            if t not in seen:
+                seen.add(t)
+                out.append(t)
     return out
 
 
@@ -446,7 +448,8 @@ def _run_kalshi_arb_cycle(config: Config, market: str, window_ts: int, close_tim
         print(f"  [{market.upper()}] Arb Kalshi: erro ao ler chave Kalshi (verifique PEM). {e!s}", flush=True)
         return False
     if not kalshi_ticker:
-        print(f"  [{market.upper()}] Arb Kalshi: market 15m não encontrado na Kalshi.", flush=True)
+        cand = ", ".join(_kalshi_candidate_tickers(market, close_time)[:6])
+        print(f"  [{market.upper()}] Arb Kalshi: market 15m não encontrado na Kalshi. Ex: {cand}", flush=True)
         return False
 
     while int(time.time()) < close_time - HARD_DEADLINE_T:
