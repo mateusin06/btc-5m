@@ -451,7 +451,9 @@ def _run_kalshi_arb_cycle(config: Config, market: str, window_ts: int, close_tim
         cand = ", ".join(_kalshi_candidate_tickers(market, close_time)[:6])
         print(f"  [{market.upper()}] Arb Kalshi: market 15m não encontrado na Kalshi. Ex: {cand}", flush=True)
         return False
+    print(f"  [{market.upper()}] Arb Kalshi: usando ticker {kalshi_ticker}", flush=True)
 
+    last_debug = 0.0
     while int(time.time()) < close_time - HARD_DEADLINE_T:
         # Preços Polymarket
         price_up = get_token_price(tokens[0], "BUY") or (get_token_price_from_event(event, "up") if event else None)
@@ -483,6 +485,14 @@ def _run_kalshi_arb_cycle(config: Config, market: str, window_ts: int, close_tim
             if best is None or cand2_cost < cand1_cost:
                 best = ("down", "yes", float(price_down), float(k_yes_ask), k_yes_size)
         if not best:
+            now = time.time()
+            if now - last_debug >= 30:
+                last_debug = now
+                print(
+                    f"  [{market.upper()}] Arb Kalshi: Poly UP {float(price_up):.2f} / DOWN {float(price_down):.2f} | "
+                    f"Kalshi YES {k_yes_ask:.2f} / NO {k_no_ask:.2f} | soma1 {cand1_cost:.2f} soma2 {cand2_cost:.2f}",
+                    flush=True,
+                )
             time.sleep(ARB_KALSHI_POLL_INTERVAL)
             continue
 
@@ -524,6 +534,14 @@ def _run_kalshi_arb_cycle(config: Config, market: str, window_ts: int, close_tim
         poly_amount = max_contracts * poly_price
         kalshi_amount = max_contracts * kalshi_price
         if poly_amount < POLY_MIN_ORDER_USD or poly_amount > api_bankroll or kalshi_amount > kalshi_balance:
+            now = time.time()
+            if now - last_debug >= 30:
+                last_debug = now
+                print(
+                    f"  [{market.upper()}] Arb Kalshi: saldo insuficiente | Poly ${api_bankroll:.2f} Kalshi ${kalshi_balance:.2f} | "
+                    f"necessário Poly ${poly_amount:.2f} Kalshi ${kalshi_amount:.2f}",
+                    flush=True,
+                )
             time.sleep(ARB_KALSHI_POLL_INTERVAL)
             continue
 
