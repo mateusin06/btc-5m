@@ -13,6 +13,7 @@ import time
 import threading
 import statistics
 import math
+import requests
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -316,6 +317,20 @@ def _sync_balance_allowance(client) -> None:
     except Exception as e:
         print(f"  AVISO: update_balance_allowance falhou: {e!s}", flush=True)
 
+
+def _tg_send(message: str) -> None:
+    token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat_id = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
+    if not token or not chat_id or not message:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": message},
+            timeout=5,
+        )
+    except Exception as e:
+        print(f"  Telegram: falha ao enviar mensagem ({e!s})", flush=True)
 
 def place_fok_order(client, token_id: str, amount_usd: float) -> bool:
     from py_clob_client.clob_types import MarketOrderArgs, OrderType
@@ -846,6 +861,10 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
             return False
 
         print(f"  [{market.upper()}] Arb Kalshi executado | N={contracts}", flush=True)
+        _tg_send(
+            f"[{market.upper()}] ARB_KALSHI: Poly {trade_direction.upper()} @ {poly_price:.2f} + "
+            f"Kalshi {kalshi_side.upper()} @ {kalshi_price:.2f} | N={contracts} | lucro {((1-total_cost)*100):.2f}%"
+        )
         _last_bet_window_by_market[market] = window_ts
         return True
 
@@ -1505,6 +1524,10 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                     ok2 = place_fok_order(client, tokens[1], amount_down) or place_limit_order(client, tokens[1], amount_down)
                     if ok1 and ok2:
                         print(f"  [{market.upper()}] ARB PURA: Up @ ${price_up:.2f} + Down @ ${price_down:.2f} | executado", flush=True)
+                        _tg_send(
+                            f"[{market.upper()}] ARB PURA: UP @ {price_up:.2f} + DOWN @ {price_down:.2f} | "
+                            f"bet ${bet_size:.2f}"
+                        )
                         _last_bet_window_by_market[market] = window_ts
                         return True
                     if ok1 and not ok2:
@@ -1541,6 +1564,16 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
 
     if ok:
         print(f"  [{market.upper()}] Ordem executada: {trade_direction.upper()} ${bet_size:.2f}", flush=True)
+        if trade_direction:
+            if real_price is not None:
+                _tg_send(
+                    f"[{market.upper()}] {active_mode.upper()} {trade_direction.upper()} @ {real_price:.2f} | "
+                    f"bet ${bet_size:.2f}"
+                )
+            else:
+                _tg_send(
+                    f"[{market.upper()}] {active_mode.upper()} {trade_direction.upper()} | bet ${bet_size:.2f}"
+                )
         if active_mode == "arbitragem" and real_price is not None and tokens and len(tokens) == 2:
             other_token_id = tokens[1] if trade_direction == "up" else tokens[0]
             buy_price = real_price
@@ -1559,6 +1592,10 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                                 ok2 = place_limit_order(client, other_token_id, amount_second)
                             if ok2:
                                 print(f"  [{market.upper()}] ARBITRAGEM: comprado lado oposto @ ${other_price:.2f} | executado", flush=True)
+                                _tg_send(
+                                    f"[{market.upper()}] ARBITRAGEM: hedge {side_second.upper()} @ {other_price:.2f} | "
+                                    f"${amount_second:.2f}"
+                                )
                                 _last_bet_window_by_market[market] = window_ts
                                 return True
                     time.sleep(ARB_POLL_INTERVAL)

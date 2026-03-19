@@ -231,6 +231,20 @@ def _config_to_supabase(user_id: str, token: str, data: dict, email: Optional[st
         raise HTTPException(status_code=500, detail="Erro ao salvar config. Tente novamente.")
 
 
+def _telegram_send(token: str, chat_id: str, text: str) -> None:
+    if not token or not chat_id:
+        raise HTTPException(status_code=400, detail="Telegram token/chat_id ausentes.")
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text},
+            timeout=8,
+        )
+        r.raise_for_status()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Falha ao enviar Telegram: {e!s}")
+
+
 def _safe_user_id(user_id: str) -> str:
     """Sanitiza user_id para uso em nomes de arquivo."""
     s = re.sub(r"[^a-zA-Z0-9\-]", "", str(user_id).replace(" ", "-"))[:64]
@@ -354,6 +368,8 @@ class ConfigUpdate(BaseModel):
     kalshi_api_key: Optional[str] = None  # Kalshi API Key ID
     kalshi_api_secret: Optional[str] = None  # Kalshi private key PEM
     kalshi_api_passphrase: Optional[str] = None  # opcional (futuro)
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
     starting_bankroll: Optional[float] = None
     min_bet: Optional[float] = None
     bot_mode: Optional[Literal["safe", "spike_ai", "moon", "aggressive", "degen", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"]] = None
@@ -388,6 +404,7 @@ class ConfigResponse(BaseModel):
     has_private_key: bool
     has_api_creds: bool
     has_kalshi_api_creds: bool
+    has_telegram: bool
     access_ok: bool = True
     access_reason: Optional[str] = None
     trial_ends_at: Optional[str] = None
@@ -538,6 +555,7 @@ def get_config(user: dict = Depends(get_current_user)):
             has_private_key=False,
             has_api_creds=False,
             has_kalshi_api_creds=False,
+            has_telegram=False,
             access_ok=True,
             access_reason="trial",
             trial_ends_at=None,
@@ -566,6 +584,7 @@ def get_config(user: dict = Depends(get_current_user)):
         has_private_key=bool(row.get("private_key") and str(row.get("private_key", "")).strip() and row.get("private_key") != "0x..."),
         has_api_creds=bool(row.get("api_key") and row.get("api_secret") and row.get("api_passphrase")),
         has_kalshi_api_creds=bool(row.get("kalshi_api_key") and row.get("kalshi_api_secret")),
+        has_telegram=bool(row.get("telegram_bot_token") and row.get("telegram_chat_id")),
         access_ok=can_use,
         access_reason=reason,
         trial_ends_at=str(trial_ends_at) if trial_ends_at else None,
@@ -596,6 +615,10 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
         data["kalshi_api_secret"] = upd.kalshi_api_secret
     if upd.kalshi_api_passphrase is not None:
         data["kalshi_api_passphrase"] = upd.kalshi_api_passphrase
+    if upd.telegram_bot_token is not None:
+        data["telegram_bot_token"] = upd.telegram_bot_token
+    if upd.telegram_chat_id is not None:
+        data["telegram_chat_id"] = upd.telegram_chat_id
     if upd.starting_bankroll is not None:
         data["starting_bankroll"] = upd.starting_bankroll
     if upd.min_bet is not None:
@@ -623,6 +646,22 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
     if upd.max_delta_open_usd is not None:
         data["max_delta_open_usd"] = max(0.0, float(upd.max_delta_open_usd))
     _config_to_supabase(user["id"], user["_token"], data, user.get("email"))
+    return {"ok": True}
+
+
+@app.post("/api/telegram/test")
+def telegram_test(user: dict = Depends(get_current_user)):
+    """Envia uma mensagem de teste no Telegram usando as credenciais do usuário."""
+    row = _config_from_supabase(user["id"], user["_token"])
+    if not row:
+        raise HTTPException(status_code=400, detail="Config não encontrada.")
+    token = (row.get("telegram_bot_token") or "").strip()
+    chat_id = (row.get("telegram_chat_id") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Telegram Bot Token não configurado.")
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="Telegram Chat ID não configurado.")
+    _telegram_send(token, chat_id, "Teste Telegram: bot ativo e pronto para enviar entradas.")
     return {"ok": True}
 
 
@@ -901,6 +940,9 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     if mode == "arb_kalshi":
         env["KALSHI_API_KEY_ID"] = row.get("kalshi_api_key", "")
         env["KALSHI_PRIVATE_KEY_PEM"] = row.get("kalshi_api_secret", "")
+    if row.get("telegram_bot_token") and row.get("telegram_chat_id"):
+        env["TELEGRAM_BOT_TOKEN"] = row.get("telegram_bot_token", "")
+        env["TELEGRAM_CHAT_ID"] = row.get("telegram_chat_id", "")
     safe_id = _safe_user_id(user["id"])
     env["BOT_USER_ID"] = safe_id
     if mode == "90_95":
@@ -1068,6 +1110,25 @@ def bot_logs(user: dict = Depends(get_current_user), tail: int = 100):
     log_path = log_dir / f"resultados_{safe_id}.txt"
     if not log_path.exists():
         return {"lines": [], "message": "Nenhum log ainda. Inicie o bot para gerar saída."}
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+        lines = all_lines[-tail:] if len(all_lines) > tail else all_lines
+        return {"lines": [ln.rstrip("\n\r") for ln in lines]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/admin/user-logs")
+def admin_user_logs(user_id: str, tail: int = 150, admin: dict = Depends(require_admin)):
+    """Admin: retorna as últimas linhas do log do bot de um usuário específico."""
+    if tail < 1 or tail > 500:
+        tail = 150
+    safe_id = _safe_user_id(user_id)
+    log_dir = _writable_log_dir()
+    log_path = log_dir / f"resultados_{safe_id}.txt"
+    if not log_path.exists():
+        return {"lines": [], "message": "Nenhum log encontrado para este usuário."}
     try:
         with open(log_path, "r", encoding="utf-8", errors="replace") as f:
             all_lines = f.readlines()

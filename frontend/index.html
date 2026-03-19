@@ -195,6 +195,22 @@
       </div>
 
       <div class="bg-panel rounded-xl border border-border p-6">
+        <h2 class="text-lg font-semibold text-white mb-2">Telegram (alertas de entradas)</h2>
+        <p class="text-sm text-muted mb-4">Opcional. Informe apenas o Chat ID para receber mensagens sempre que o bot fizer uma entrada.</p>
+        <div class="grid gap-4 max-w-xl">
+          <div>
+            <label class="block text-sm text-gray-400 mb-1">Telegram Chat ID</label>
+            <input type="text" id="input-telegram-chat" placeholder="Ex: 123456789" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2 font-mono text-sm" />
+            <p class="text-xs text-muted mt-2">NÃ£o sabe o Chat ID? Abra o <a href="https://t.me/userinfobot" target="_blank" rel="noopener" class="text-accent hover:underline">@userinfobot</a>, envie /start e copie o ID mostrado.</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <button type="button" id="btn-telegram-test" class="px-4 py-2 bg-[#2d333b] text-white font-medium rounded-lg hover:bg-panel border border-border">Testar Telegram</button>
+            <span id="telegram-test-status" class="text-sm text-muted"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-panel rounded-xl border border-border p-6">
         <h2 class="text-lg font-semibold text-white mb-4">Parâmetros do bot</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -429,6 +445,14 @@
           </table>
         </div>
       </div>
+      <div class="bg-panel rounded-xl border border-border p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-white">Log do usuÃ¡rio</h2>
+          <button type="button" id="btn-admin-log-refresh" class="text-sm text-accent hover:underline">Atualizar</button>
+        </div>
+        <p id="admin-log-title" class="text-sm text-muted mb-3">Clique no e-mail de um usuÃ¡rio para ver o log.</p>
+        <pre id="admin-user-logs" class="bg-[#0f1116] rounded-lg p-4 text-sm text-gray-300 font-mono overflow-auto max-h-64 border border-border">Selecione um usuÃ¡rio.</pre>
+      </div>
     </section>
 
     </section>
@@ -439,6 +463,8 @@
     const API = window.location.origin;
     let supabaseClient = null;
     let session = null;
+    let adminSelectedUserId = '';
+    let adminSelectedEmail = '';
 
     function getEl(id) { return document.getElementById(id); }
 
@@ -603,10 +629,46 @@
         tbody.innerHTML = users.map(u => {
           const trial = u.trial_ends_at ? new Date(u.trial_ends_at).toLocaleString('pt-BR') : '—';
           const sub = u.subscription_ends_at ? new Date(u.subscription_ends_at).toLocaleString('pt-BR') : '—';
-          return `<tr class="border-b border-border"><td class="py-2 pr-4">${(u.email || '—')}</td><td class="py-2 pr-4 font-mono text-xs">${u.user_id || '—'}</td><td class="py-2 pr-4">${trial}</td><td class="py-2 pr-4">${sub}</td></tr>`;
+          const email = (u.email || '—');
+          const userId = (u.user_id || '');
+          const emailCell = userId
+            ? `<button type="button" class="admin-user-log-link text-accent hover:underline" data-user-id="${userId}" data-email="${email}">${email}</button>`
+            : email;
+          return `<tr class="border-b border-border"><td class="py-2 pr-4">${emailCell}</td><td class="py-2 pr-4 font-mono text-xs">${userId || '—'}</td><td class="py-2 pr-4">${trial}</td><td class="py-2 pr-4">${sub}</td></tr>`;
         }).join('');
+        document.querySelectorAll('.admin-user-log-link').forEach(btn => {
+          btn.addEventListener('click', () => loadAdminUserLogs(btn.dataset.userId || '', btn.dataset.email || ''));
+        });
       } catch (e) {
         tbody.innerHTML = '<tr><td colspan="4" class="py-4 text-danger">Erro: ' + e.message + '</td></tr>';
+      }
+    }
+
+    async function loadAdminUserLogs(userId, email) {
+      const pre = getEl('admin-user-logs');
+      const title = getEl('admin-log-title');
+      if (!pre || !title) return;
+      if (!userId) {
+        pre.textContent = 'Selecione um usuÃ¡rio.';
+        title.textContent = 'Clique no e-mail de um usuÃ¡rio para ver o log.';
+        return;
+      }
+      adminSelectedUserId = userId;
+      adminSelectedEmail = email || '';
+      title.textContent = 'Log de: ' + (email || userId);
+      pre.textContent = 'Carregando...';
+      try {
+        const r = await fetch(API + '/api/admin/user-logs?tail=150&user_id=' + encodeURIComponent(userId), { headers: authHeaders() });
+        if (r.status === 403) { pre.textContent = 'Acesso negado.'; return; }
+        const data = await r.json();
+        if (data.lines && data.lines.length > 0) {
+          pre.textContent = data.lines.join('\n');
+          pre.scrollTop = pre.scrollHeight;
+        } else {
+          pre.textContent = data.message || 'Nenhum log encontrado para este usuÃ¡rio.';
+        }
+      } catch (e) {
+        pre.textContent = 'Erro ao carregar log: ' + e.message;
       }
     }
 
@@ -647,6 +709,11 @@
         ? 'Exibir mini tutorial (como pegar a chave privada da MetaMask)'
         : 'Ocultar mini tutorial';
     });
+
+    const adminLogBtn = getEl('btn-admin-log-refresh');
+    if (adminLogBtn) {
+      adminLogBtn.addEventListener('click', () => loadAdminUserLogs(adminSelectedUserId, adminSelectedEmail));
+    }
 
     getEl('btn-kalshi-tutorial').addEventListener('click', () => {
       const el = getEl('kalshi-tutorial');
@@ -692,6 +759,7 @@
         getEl('input-kalshi-key').value = '';
         getEl('input-kalshi-secret').value = '';
         getEl('input-kalshi-passphrase').value = '';
+        getEl('input-telegram-chat').value = '';
         // Sincronizar dropdown "Modo" do Iniciar com a config salva (evita iniciar em safe sem querer)
         const modeEl = getEl('bot-mode');
         if (c.bot_mode && ['safe','spike_ai','moon','aggressive','only_hedge_plus','dry_run','arbitragem','arb_kalshi','odd_master','90_95'].includes(c.bot_mode)) {
@@ -890,6 +958,8 @@
       if (kalshiKey) payload.kalshi_api_key = kalshiKey;
       if (kalshiSecret) payload.kalshi_api_secret = kalshiSecret;
       if (kalshiPass) payload.kalshi_api_passphrase = kalshiPass;
+      const tgChat = getEl('input-telegram-chat').value.trim();
+      if (tgChat) payload.telegram_chat_id = tgChat;
       const safeBet = parseFloat(getEl('cfg-safe-bet').value);
       if (!isNaN(safeBet) && safeBet > 0) payload.safe_bet = safeBet;
       const onlyHedgeBet = parseFloat(getEl('cfg-only-hedge-bet').value);
@@ -913,6 +983,25 @@
         status.textContent = 'Erro: ' + e.message;
       }
     });
+
+    const tgTestBtn = getEl('btn-telegram-test');
+    if (tgTestBtn) {
+      tgTestBtn.addEventListener('click', async () => {
+        const status = getEl('telegram-test-status');
+        status.textContent = 'Enviando...';
+        try {
+          const r = await fetch(API + '/api/telegram/test', { method: 'POST', headers: authHeaders() });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            status.textContent = data.detail || r.statusText;
+            return;
+          }
+          status.textContent = 'Mensagem enviada.';
+        } catch (e) {
+          status.textContent = 'Erro: ' + e.message;
+        }
+      });
+    }
 
     // --- Bot mode visibility
     const botMode = getEl('bot-mode');
