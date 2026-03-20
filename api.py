@@ -283,17 +283,29 @@ def get_price_to_beat(slug: str) -> Optional[float]:
         if not event:
             return None
         meta = event.get("eventMetadata") or {}
-        ptb = meta.get("priceToBeat")
-        if ptb is not None:
-            return float(ptb)
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+        if isinstance(meta, dict):
+            for key in ("priceToBeat", "price_to_beat", "priceToBeatUsd", "price_to_beat_usd"):
+                if key in meta and meta[key] is not None:
+                    return float(meta[key])
         # Fallback: algumas respostas trazem o PTB no market metadata
         markets = event.get("markets") or []
         if markets:
             m0 = markets[0] or {}
             m_meta = m0.get("metadata") or m0.get("marketMetadata") or {}
-            ptb2 = m_meta.get("priceToBeat") or m_meta.get("price_to_beat")
-            if ptb2 is not None:
-                return float(ptb2)
+            if isinstance(m_meta, str):
+                try:
+                    m_meta = json.loads(m_meta)
+                except Exception:
+                    m_meta = {}
+            if isinstance(m_meta, dict):
+                ptb2 = m_meta.get("priceToBeat") or m_meta.get("price_to_beat") or m_meta.get("priceToBeatUsd") or m_meta.get("price_to_beat_usd")
+                if ptb2 is not None:
+                    return float(ptb2)
             # Extrair de texto (ex.: "Price to beat $69,978.55")
             text_fields = [
                 m0.get("subtitle"),
