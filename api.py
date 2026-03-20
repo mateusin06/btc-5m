@@ -430,16 +430,36 @@ def get_price_to_beat(slug: str) -> Optional[float]:
                     return found
         return None
 
+    def _fetch_event_no_cache() -> Optional[dict]:
+        headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
+        r = requests.get(
+            GAMMA_EVENTS,
+            params={"slug": slug, "cb": f"{time.time():.3f}", "cache": f"{time.time():.3f}"},
+            headers=headers,
+            timeout=10,
+        )
+        if not r.ok:
+            return None
+        data = r.json()
+        if isinstance(data, list) and data:
+            return data[0]
+        if isinstance(data, dict):
+            return data
+        return None
+
     try:
-        event = get_market_by_slug(slug)
-        if event:
-            found = _extract_ptb(event)
-            if found is not None:
-                return found
-            markets = event.get("markets") or []
-            found = _extract_ptb(markets)
-            if found is not None:
-                return found
+        # Repetir 2-3x para evitar cache stale da Gamma
+        for _ in range(3):
+            event = _fetch_event_no_cache()
+            if event:
+                found = _extract_ptb(event)
+                if found is not None:
+                    return found
+                markets = event.get("markets") or []
+                found = _extract_ptb(markets)
+                if found is not None:
+                    return found
+            time.sleep(0.2)
         try:
             headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
             r2 = requests.get(

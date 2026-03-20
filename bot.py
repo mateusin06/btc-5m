@@ -719,7 +719,7 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
 
         if poly_ptb is None or kalshi_ptb is None:
             print(
-                f"  [{market.upper()}] Arb Kalshi: PTB indisponÃ­vel | Poly {poly_ptb} | Kalshi {kalshi_ptb}. Pulando janela.",
+                f"  [{market.upper()}] Arb Kalshi: PTB indisponÃ­vel | Poly {poly_ptb} | Kalshi {kalshi_ptb} | slug {slug}. Pulando janela.",
                 flush=True,
             )
             return False
