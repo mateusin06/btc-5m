@@ -273,7 +273,7 @@ def get_window_resolution_polymarket(slug: str) -> Optional[bool]:
         return None
 
 
-def get_price_to_beat(slug: str) -> Optional[float]:
+def _get_price_to_beat_legacy(slug: str) -> Optional[float]:
     """
     Preço de abertura da janela (Price to Beat) da Polymarket/Chainlink.
     É o preço usado na resolução: Up se fechamento Chainlink >= este valor.
@@ -353,6 +353,100 @@ def get_price_to_beat(slug: str) -> Optional[float]:
                         ptb3 = m_meta2.get("priceToBeat") or m_meta2.get("price_to_beat") or m_meta2.get("priceToBeatUsd") or m_meta2.get("price_to_beat_usd")
                         if ptb3 is not None:
                             return float(ptb3)
+        except Exception:
+            pass
+        return None
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
+def get_price_to_beat(slug: str) -> Optional[float]:
+    """
+    PreÃ§o de abertura da janela (Price to Beat) da Polymarket/Chainlink.
+    Ã‰ o preÃ§o usado na resoluÃ§Ã£o: Up se fechamento Chainlink >= este valor.
+    Returns: preÃ§o float ou None se ainda nÃ£o disponÃ­vel/erro.
+    """
+    import json
+    import re
+
+    def _coerce_float(value: object) -> Optional[float]:
+        try:
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                cleaned = value.replace(",", "").strip()
+                return float(cleaned)
+        except Exception:
+            return None
+        return None
+
+    def _parse_price_from_string(text: str) -> Optional[float]:
+        if not text:
+            return None
+        match = re.search(
+            r"(price to beat|target price)[^0-9]*([$]?[0-9][0-9,]*\.?[0-9]*)",
+            str(text),
+            re.IGNORECASE,
+        )
+        if match:
+            value = match.group(2).replace("$", "").replace(",", "")
+            return _coerce_float(value)
+        return None
+
+    def _extract_ptb(obj: object, depth: int = 0) -> Optional[float]:
+        if obj is None or depth > 6:
+            return None
+        if isinstance(obj, (int, float)):
+            return None
+        if isinstance(obj, str):
+            parsed = _parse_price_from_string(obj)
+            if parsed is not None:
+                return parsed
+            if obj.strip().startswith("{") or obj.strip().startswith("["):
+                try:
+                    parsed_json = json.loads(obj)
+                except Exception:
+                    parsed_json = None
+                if parsed_json is not None:
+                    return _extract_ptb(parsed_json, depth + 1)
+            return None
+        if isinstance(obj, dict):
+            for key in ("priceToBeat", "price_to_beat", "priceToBeatUsd", "price_to_beat_usd", "target_price", "targetPrice"):
+                if key in obj:
+                    value = _coerce_float(obj.get(key))
+                    if value is not None:
+                        return value
+            for value in obj.values():
+                found = _extract_ptb(value, depth + 1)
+                if found is not None:
+                    return found
+            return None
+        if isinstance(obj, list):
+            for item in obj:
+                found = _extract_ptb(item, depth + 1)
+                if found is not None:
+                    return found
+        return None
+
+    try:
+        event = get_market_by_slug(slug)
+        if event:
+            found = _extract_ptb(event)
+            if found is not None:
+                return found
+            markets = event.get("markets") or []
+            found = _extract_ptb(markets)
+            if found is not None:
+                return found
+        try:
+            r2 = requests.get(GAMMA_MARKETS, params={"slug": slug}, timeout=10)
+            if r2.ok:
+                data2 = r2.json()
+                found = _extract_ptb(data2)
+                if found is not None:
+                    return found
         except Exception:
             pass
         return None
