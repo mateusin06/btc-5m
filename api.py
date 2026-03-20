@@ -294,6 +294,31 @@ def get_price_to_beat(slug: str) -> Optional[float]:
             ptb2 = m_meta.get("priceToBeat") or m_meta.get("price_to_beat")
             if ptb2 is not None:
                 return float(ptb2)
+            # Extrair de texto (ex.: "Price to beat $69,978.55")
+            text_fields = [
+                m0.get("subtitle"),
+                m0.get("title"),
+                m0.get("question"),
+                m0.get("description"),
+            ]
+        else:
+            text_fields = []
+        # Também tentar no evento
+        text_fields += [
+            event.get("subtitle"),
+            event.get("title"),
+            event.get("description"),
+        ]
+        import re
+        for s in text_fields:
+            if not s:
+                continue
+            m = re.search(r"(price to beat|target price)[^0-9]*([0-9][0-9,]*\.?[0-9]*)", str(s), re.IGNORECASE)
+            if m:
+                try:
+                    return float(m.group(2).replace(",", ""))
+                except Exception:
+                    pass
         return None
     except (TypeError, ValueError, KeyError):
         return None

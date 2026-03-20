@@ -587,6 +587,7 @@ def _parse_kalshi_close_ts(market_obj: dict) -> Optional[int]:
 def _parse_kalshi_price_to_beat(market_obj: dict) -> Optional[float]:
     # Tenta campos conhecidos (Kalshi pode variar por produto)
     candidates = [
+        ("floor_strike", "dollars"),
         ("strike_price_dollars", "dollars"),
         ("strike_price_decimal", "dollars"),
         ("strike_price", "dollars"),
@@ -607,6 +608,18 @@ def _parse_kalshi_price_to_beat(market_obj: dict) -> Optional[float]:
             try:
                 v = float(meta[key])
                 return v / 100.0 if kind == "cents" else v
+            except Exception:
+                pass
+    # Tenta extrair de subtítulos (Target Price)
+    import re
+    for key in ("yes_sub_title", "no_sub_title", "subtitle", "title"):
+        s = market_obj.get(key)
+        if not s:
+            continue
+        m = re.search(r"([0-9][0-9,]*\.?[0-9]*)", str(s))
+        if m:
+            try:
+                return float(m.group(1).replace(",", ""))
             except Exception:
                 pass
     return None
