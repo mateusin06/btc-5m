@@ -369,67 +369,6 @@ def get_price_to_beat(slug: str) -> Optional[float]:
     import json
     import re
 
-    def _coerce_float(value: object) -> Optional[float]:
-        try:
-            if value is None:
-                return None
-            if isinstance(value, (int, float)):
-                return float(value)
-            if isinstance(value, str):
-                cleaned = value.replace(",", "").strip()
-                return float(cleaned)
-        except Exception:
-            return None
-        return None
-
-    def _parse_price_from_string(text: str) -> Optional[float]:
-        if not text:
-            return None
-        match = re.search(
-            r"(price to beat|target price)[^0-9]*([$]?[0-9][0-9,]*\.?[0-9]*)",
-            str(text),
-            re.IGNORECASE,
-        )
-        if match:
-            value = match.group(2).replace("$", "").replace(",", "")
-            return _coerce_float(value)
-        return None
-
-    def _extract_ptb(obj: object, depth: int = 0) -> Optional[float]:
-        if obj is None or depth > 6:
-            return None
-        if isinstance(obj, (int, float)):
-            return None
-        if isinstance(obj, str):
-            parsed = _parse_price_from_string(obj)
-            if parsed is not None:
-                return parsed
-            if obj.strip().startswith("{") or obj.strip().startswith("["):
-                try:
-                    parsed_json = json.loads(obj)
-                except Exception:
-                    parsed_json = None
-                if parsed_json is not None:
-                    return _extract_ptb(parsed_json, depth + 1)
-            return None
-        if isinstance(obj, dict):
-            for key in ("priceToBeat", "price_to_beat", "priceToBeatUsd", "price_to_beat_usd", "target_price", "targetPrice"):
-                if key in obj:
-                    value = _coerce_float(obj.get(key))
-                    if value is not None:
-                        return value
-            for value in obj.values():
-                found = _extract_ptb(value, depth + 1)
-                if found is not None:
-                    return found
-            return None
-        if isinstance(obj, list):
-            for item in obj:
-                found = _extract_ptb(item, depth + 1)
-                if found is not None:
-                    return found
-        return None
-
     def _fetch_event_no_cache() -> Optional[dict]:
         headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
         r = requests.get(
@@ -447,34 +386,44 @@ def get_price_to_beat(slug: str) -> Optional[float]:
             return data
         return None
 
+    def _coerce_float(value: object) -> Optional[float]:
+        try:
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                cleaned = value.replace(",", "").strip()
+                return float(cleaned)
+        except Exception:
+            return None
+        return None
+
+    def _extract_ptb_from_event(event: dict) -> Optional[float]:
+        if not isinstance(event, dict):
+            return None
+        meta = event.get("eventMetadata")
+        if isinstance(meta, dict):
+            value = meta.get("priceToBeat") or meta.get("price_to_beat") or meta.get("priceToBeatUsd") or meta.get("price_to_beat_usd")
+            return _coerce_float(value)
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = None
+            if isinstance(meta, dict):
+                value = meta.get("priceToBeat") or meta.get("price_to_beat") or meta.get("priceToBeatUsd") or meta.get("price_to_beat_usd")
+                return _coerce_float(value)
+        return None
+
     try:
-        # Repetir para evitar cache stale da Gamma e aguardar PTB aparecer
-        for _ in range(5):
+        for _ in range(6):
             event = _fetch_event_no_cache()
             if event:
-                found = _extract_ptb(event)
-                if found is not None:
-                    return found
-                markets = event.get("markets") or []
-                found = _extract_ptb(markets)
-                if found is not None:
-                    return found
-            time.sleep(0.4)
-        try:
-            headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
-            r2 = requests.get(
-                GAMMA_MARKETS,
-                params={"slug": slug, "cb": f"{time.time():.3f}", "cache": f"{time.time():.3f}"},
-                headers=headers,
-                timeout=10,
-            )
-            if r2.ok:
-                data2 = r2.json()
-                found = _extract_ptb(data2)
-                if found is not None:
-                    return found
-        except Exception:
-            pass
+                value = _extract_ptb_from_event(event)
+                if value is not None:
+                    return value
+            time.sleep(0.5)
         return None
     except (TypeError, ValueError, KeyError):
         return None
