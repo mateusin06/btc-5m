@@ -284,9 +284,17 @@ def get_price_to_beat(slug: str) -> Optional[float]:
             return None
         meta = event.get("eventMetadata") or {}
         ptb = meta.get("priceToBeat")
-        if ptb is None:
-            return None
-        return float(ptb)
+        if ptb is not None:
+            return float(ptb)
+        # Fallback: algumas respostas trazem o PTB no market metadata
+        markets = event.get("markets") or []
+        if markets:
+            m0 = markets[0] or {}
+            m_meta = m0.get("metadata") or m0.get("marketMetadata") or {}
+            ptb2 = m_meta.get("priceToBeat") or m_meta.get("price_to_beat")
+            if ptb2 is not None:
+                return float(ptb2)
+        return None
     except (TypeError, ValueError, KeyError):
         return None
 

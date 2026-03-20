@@ -100,6 +100,10 @@ def get_markets(
     return kalshi_get(api_key_id, private_key_pem, "/markets", params=params)
 
 
+def get_market(api_key_id: str, private_key_pem: str, ticker: str) -> dict:
+    return kalshi_get(api_key_id, private_key_pem, f"/markets/{ticker}")
+
+
 def get_orderbook(api_key_id: str, private_key_pem: str, ticker: str, depth: int = 1) -> dict:
     params = {"depth": depth} if depth is not None else None
     return kalshi_get(api_key_id, private_key_pem, f"/markets/{ticker}/orderbook", params=params)

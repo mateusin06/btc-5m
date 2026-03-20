@@ -656,7 +656,7 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
         return False
 
     try:
-        from kalshi_api import get_balance as kalshi_get_balance, get_orderbook, create_order
+        from kalshi_api import get_balance as kalshi_get_balance, get_orderbook, create_order, get_market as kalshi_get_market
     except Exception as e:
         print(f"  [{market.upper()}] Arb Kalshi: erro ao carregar módulo Kalshi: {e!s}", flush=True)
         return False
@@ -686,6 +686,17 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     if ARB_KALSHI_ALIGN_PTB:
         poly_ptb = get_price_to_beat(slug)
         kalshi_ptb = _parse_kalshi_price_to_beat(kalshi_market)
+        if kalshi_ptb is None:
+            try:
+                detail = kalshi_get_market(api_key_id, private_key_pem, kalshi_ticker)
+                kalshi_ptb = _parse_kalshi_price_to_beat(detail.get("market") or detail)
+            except Exception:
+                kalshi_ptb = None
+        if kalshi_ptb is None or poly_ptb is None:
+            print(
+                f"  [{market.upper()}] Arb Kalshi: PTB None | Poly {poly_ptb} | Kalshi {kalshi_ptb}",
+                flush=True,
+            )
         if poly_ptb is not None and kalshi_ptb is not None:
             diff = abs(float(poly_ptb) - float(kalshi_ptb))
             max_diff = ARB_KALSHI_PTB_DIFF_BTC if market.startswith("btc") else ARB_KALSHI_PTB_DIFF_ETH
@@ -950,6 +961,12 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
         print(f"  [{market.upper()}] Arb Kalshi executado | N={contracts}", flush=True)
         poly_ptb = get_price_to_beat(slug)
         kalshi_ptb = _parse_kalshi_price_to_beat(kalshi_market)
+        if kalshi_ptb is None:
+            try:
+                detail = kalshi_get_market(api_key_id, private_key_pem, kalshi_ticker)
+                kalshi_ptb = _parse_kalshi_price_to_beat(detail.get("market") or detail)
+            except Exception:
+                kalshi_ptb = None
         print(
             f"  [{market.upper()}] Arb Kalshi: PTB Poly {poly_ptb if poly_ptb is not None else 'n/a'} | "
             f"PTB Kalshi {kalshi_ptb if kalshi_ptb is not None else 'n/a'}",
