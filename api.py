@@ -448,8 +448,8 @@ def get_price_to_beat(slug: str) -> Optional[float]:
         return None
 
     try:
-        # Repetir 2-3x para evitar cache stale da Gamma
-        for _ in range(3):
+        # Repetir para evitar cache stale da Gamma e aguardar PTB aparecer
+        for _ in range(5):
             event = _fetch_event_no_cache()
             if event:
                 found = _extract_ptb(event)
@@ -459,7 +459,7 @@ def get_price_to_beat(slug: str) -> Optional[float]:
                 found = _extract_ptb(markets)
                 if found is not None:
                     return found
-            time.sleep(0.2)
+            time.sleep(0.4)
         try:
             headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
             r2 = requests.get(
