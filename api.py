@@ -412,65 +412,14 @@ def get_price_to_beat(slug: str) -> Optional[float]:
     Ã‰ o preÃ§o usado na resoluÃ§Ã£o: Up se fechamento Chainlink >= este valor.
     Returns: preÃ§o float ou None se ainda nÃ£o disponÃ­vel/erro.
     """
-    import json
-    import re
-
-    def _fetch_event_no_cache() -> Optional[dict]:
-        headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
-        r = requests.get(
-            GAMMA_EVENTS,
-            params={"slug": slug, "cb": f"{time.time():.3f}", "cache": f"{time.time():.3f}"},
-            headers=headers,
-            timeout=10,
-        )
-        if not r.ok:
-            return None
-        data = r.json()
-        if isinstance(data, list) and data:
-            return data[0]
-        if isinstance(data, dict):
-            return data
-        return None
-
-    def _coerce_float(value: object) -> Optional[float]:
+    try:
+        # Somente abertura da janela via Binance como PTB
         try:
-            if value is None:
-                return None
-            if isinstance(value, (int, float)):
-                return float(value)
-            if isinstance(value, str):
-                cleaned = value.replace(",", "").strip()
-                return float(cleaned)
+            window_ts = int(slug.split("-")[-1])
         except Exception:
             return None
-        return None
-
-    def _extract_ptb_from_event(event: dict) -> Optional[float]:
-        if not isinstance(event, dict):
-            return None
-        meta = event.get("eventMetadata")
-        if isinstance(meta, dict):
-            value = meta.get("priceToBeat") or meta.get("price_to_beat") or meta.get("priceToBeatUsd") or meta.get("price_to_beat_usd")
-            return _coerce_float(value)
-        if isinstance(meta, str):
-            try:
-                meta = json.loads(meta)
-            except Exception:
-                meta = None
-            if isinstance(meta, dict):
-                value = meta.get("priceToBeat") or meta.get("price_to_beat") or meta.get("priceToBeatUsd") or meta.get("price_to_beat_usd")
-                return _coerce_float(value)
-        return None
-
-    try:
-        for _ in range(6):
-            event = _fetch_event_no_cache()
-            if event:
-                value = _extract_ptb_from_event(event)
-                if value is not None:
-                    return value
-            time.sleep(0.5)
-        return None
+        market_key = "eth" if slug.startswith("eth-") else "btc"
+        return get_window_open_binance(market_key, window_ts, is_15m=True)
     except (TypeError, ValueError, KeyError):
         return None
 

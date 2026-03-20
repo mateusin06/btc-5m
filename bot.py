@@ -14,7 +14,6 @@ import threading
 import statistics
 import math
 import requests
-import json
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from typing import Optional
@@ -80,7 +79,7 @@ ARB_KALSHI_MIN_PROFIT_PCT = 0.05  # Arb Kalshi: lucro mínimo (5%)
 ARB_KALSHI_SLIPPAGE_PCT = 0.01    # Arb Kalshi: buffer extra para slippage/fees
 ARB_KALSHI_POLL_INTERVAL = 2
 ARB_KALSHI_ALIGN_PTB = os.getenv("KALSHI_ALIGN_PTB", "0").strip().lower() in ("1", "true", "yes")
-ARB_KALSHI_PTB_DIFF_BTC = 10.0
+ARB_KALSHI_PTB_DIFF_BTC = 15.0
 ARB_KALSHI_PTB_DIFF_ETH = 1.0
 ARB_KALSHI_PTB_WAIT_SEC = 20
 ARB_KALSHI_PTB_RTD_OFFSET_SEC = 2
@@ -115,94 +114,7 @@ _bankroll_lock = threading.Lock()
 # Modo fixado no arranque (fonte única de verdade; evita safe quando iniciou em aggressive)
 FROZEN_MODE: Optional[str] = None
 
-# RTDS cache (preço ao vivo e preço de abertura da janela)
-_rtds_lock = threading.Lock()
-_rtds_last_price: dict[str, float] = {}
-_rtds_open_price: dict[tuple[str, int], float] = {}
-_rtds_thread_started = False
-
-
-def _rtds_symbol_for_market(market: str) -> str:
-    return "btcusdt" if market.startswith("btc") else "ethusdt"
-
-
-def _rtds_set_price(symbol: str, ts_sec: int, value: float) -> None:
-    window_ts = (int(ts_sec) // WINDOW_SEC_15M) * WINDOW_SEC_15M
-    key = (symbol, window_ts)
-    with _rtds_lock:
-        _rtds_last_price[symbol] = value
-        if key not in _rtds_open_price and int(ts_sec) >= window_ts:
-            _rtds_open_price[key] = value
-        if len(_rtds_open_price) > 200:
-            cutoff = int(time.time()) - 3600
-            for k in list(_rtds_open_price.keys()):
-                if k[1] < cutoff:
-                    _rtds_open_price.pop(k, None)
-
-
-def _rtds_get_open_price(symbol: str, window_ts: int) -> Optional[float]:
-    with _rtds_lock:
-        return _rtds_open_price.get((symbol, window_ts))
-
-
-def _rtds_worker() -> None:
-    try:
-        from websocket import create_connection
-    except Exception:
-        return
-    while True:
-        ws = None
-        try:
-            ws = create_connection("wss://ws-live-data.polymarket.com", timeout=10)
-            ws.settimeout(5)
-            sub = {
-                "action": "subscribe",
-                "subscriptions": [
-                    {"topic": "crypto_prices", "type": "update", "filters": "btcusdt,ethusdt"}
-                ],
-            }
-            ws.send(json.dumps(sub))
-            last_ping = time.time()
-            while True:
-                try:
-                    msg = ws.recv()
-                except Exception:
-                    if time.time() - last_ping >= 5:
-                        try:
-                            ws.send("PING")
-                        except Exception:
-                            break
-                        last_ping = time.time()
-                    continue
-                try:
-                    data = json.loads(msg)
-                except Exception:
-                    continue
-                if data.get("topic") != "crypto_prices" or data.get("type") != "update":
-                    continue
-                payload = data.get("payload") or {}
-                symbol = (payload.get("symbol") or "").lower()
-                value = payload.get("value")
-                ts_ms = payload.get("timestamp")
-                if symbol in ("btcusdt", "ethusdt") and value is not None and ts_ms:
-                    _rtds_set_price(symbol, int(ts_ms) // 1000, float(value))
-        except Exception:
-            time.sleep(2)
-        finally:
-            try:
-                if ws is not None:
-                    ws.close()
-            except Exception:
-                pass
-
-
-def _ensure_rtds_thread() -> None:
-    global _rtds_thread_started
-    if _rtds_thread_started:
-        return
-    t = threading.Thread(target=_rtds_worker, name="rtds_worker", daemon=True)
-    t.start()
-    _rtds_thread_started = True
+# (RTDS removido)
 
 
 @dataclass
@@ -758,6 +670,7 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
         extract_token_ids,
         get_token_price,
         get_token_price_from_event,
+        get_price_to_beat,
     )
     api_key_id = (os.getenv("KALSHI_API_KEY_ID") or "").strip()
     private_key_pem = (os.getenv("KALSHI_PRIVATE_KEY_PEM") or "").strip()
@@ -837,8 +750,6 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     poly_ptb = None
     kalshi_ptb = None
     arb_deadline = HARD_DEADLINE_T
-    if ARB_KALSHI_ALIGN_PTB:
-        _ensure_rtds_thread()
     while int(time.time()) < close_time - arb_deadline:
         # Alinhamento Price to Beat (opcional)
         if ARB_KALSHI_ALIGN_PTB:
@@ -854,13 +765,7 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
                     except Exception:
                         kalshi_ptb = None
             if poly_ptb is None:
-                rtd_symbol = _rtds_symbol_for_market(market)
-                poly_ptb = _rtds_get_open_price(rtd_symbol, window_ts)
-                if poly_ptb is not None:
-                    print(
-                        f"  [{market.upper()}] Arb Kalshi: PTB via RTDS abertura {poly_ptb:.2f} ({rtd_symbol})",
-                        flush=True,
-                    )
+                poly_ptb = get_price_to_beat(slug)
             if poly_ptb is None or kalshi_ptb is None:
                 now = time.time()
                 if now - last_ptb_log >= 30:
