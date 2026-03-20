@@ -429,6 +429,20 @@ def get_window_open_binance(market: str, window_ts: int, is_15m: bool = False) -
     Preço de abertura da janela via Binance (primeiro candle da janela).
     Útil para comparar com Chainlink (get_price_to_beat) e obter delta.
     """
+    if is_15m:
+        symbol = "ETHUSDT" if market == "eth" else "BTCUSDT"
+        try:
+            r = requests.get(
+                BINANCE_KLINE,
+                params={"symbol": symbol, "interval": "15m", "startTime": window_ts * 1000, "limit": 1},
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
+            if data and len(data[0]) >= 2:
+                return float(data[0][1])
+        except Exception:
+            pass
     if market == "eth":
         candles = get_eth_candles_1m(limit=15)
     else:

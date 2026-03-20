@@ -113,6 +113,8 @@ _last_bet_window_by_market: dict[str, int] = {}
 _bankroll_lock = threading.Lock()
 # Modo fixado no arranque (fonte única de verdade; evita safe quando iniciou em aggressive)
 FROZEN_MODE: Optional[str] = None
+# Evitar spam de PTB desalinhado por janela
+_last_ptb_skip_window_by_market: dict[str, int] = {}
 
 # (RTDS removido)
 
@@ -779,10 +781,12 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
             diff = abs(float(poly_ptb) - float(kalshi_ptb))
             max_diff = ARB_KALSHI_PTB_DIFF_BTC if market.startswith("btc") else ARB_KALSHI_PTB_DIFF_ETH
             if diff > max_diff:
-                print(
-                    f"  [{market.upper()}] Arb Kalshi: PTB desalinhado | Poly {poly_ptb:.2f} vs Kalshi {kalshi_ptb:.2f} | diff {diff:.2f} > {max_diff:.2f}, pulando janela.",
-                    flush=True,
-                )
+                if _last_ptb_skip_window_by_market.get(market) != window_ts:
+                    _last_ptb_skip_window_by_market[market] = window_ts
+                    print(
+                        f"  [{market.upper()}] Arb Kalshi: PTB desalinhado | Poly {poly_ptb:.2f} vs Kalshi {kalshi_ptb:.2f} | diff {diff:.2f} > {max_diff:.2f}, pulando janela.",
+                        flush=True,
+                    )
                 return False
         # Preços Polymarket
         price_up = get_token_price(tokens[0], "BUY") or (get_token_price_from_event(event, "up") if event else None)
