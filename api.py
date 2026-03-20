@@ -3,6 +3,7 @@
 APIs externas: Binance (preços) e Polymarket Gamma (mercados).
 """
 
+import json
 import time
 from typing import Optional
 
@@ -13,6 +14,51 @@ BINANCE_KLINE = "https://api.binance.com/api/v3/klines"
 BINANCE_TRADES = "https://api.binance.com/api/v3/trades"
 GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
 GAMMA_MARKETS = "https://gamma-api.polymarket.com/markets"
+
+
+def get_rtds_price(symbol: str, timeout: float = 2.5) -> Optional[float]:
+    """
+    PreÃ§o atual via Polymarket RTDS (Binance source). Ex.: symbol="btcusdt" ou "ethusdt".
+    """
+    try:
+        from websocket import create_connection
+    except Exception:
+        return None
+    ws = None
+    try:
+        ws = create_connection("wss://ws-live-data.polymarket.com", timeout=timeout)
+        ws.settimeout(timeout)
+        sub = {
+            "action": "subscribe",
+            "subscriptions": [
+                {"topic": "crypto_prices", "type": "update", "filters": symbol.lower()}
+            ],
+        }
+        ws.send(json.dumps(sub))
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                msg = ws.recv()
+            except Exception:
+                break
+            try:
+                data = json.loads(msg)
+            except Exception:
+                continue
+            if data.get("topic") != "crypto_prices" or data.get("type") != "update":
+                continue
+            payload = data.get("payload") or {}
+            if (payload.get("symbol") or "").lower() == symbol.lower():
+                value = payload.get("value")
+                if value is not None:
+                    return float(value)
+    finally:
+        try:
+            if ws is not None:
+                ws.close()
+        except Exception:
+            pass
+    return None
 
 
 def get_btc_price() -> Optional[float]:

@@ -82,6 +82,7 @@ ARB_KALSHI_ALIGN_PTB = os.getenv("KALSHI_ALIGN_PTB", "0").strip().lower() in ("1
 ARB_KALSHI_PTB_DIFF_BTC = 10.0
 ARB_KALSHI_PTB_DIFF_ETH = 1.0
 ARB_KALSHI_PTB_WAIT_SEC = 20
+ARB_KALSHI_PTB_RTD_OFFSET_SEC = 2
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -662,7 +663,14 @@ def _find_kalshi_active_market(api_key_id: str, private_key_pem: str, series_tic
 
 def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     """Arbitragem Polymarket vs Kalshi (BTC/ETH 15m)."""
-    from api import get_market_by_slug, extract_token_ids, get_token_price, get_token_price_from_event, get_price_to_beat
+    from api import (
+        get_market_by_slug,
+        extract_token_ids,
+        get_token_price,
+        get_token_price_from_event,
+        get_price_to_beat,
+        get_rtds_price,
+    )
     api_key_id = (os.getenv("KALSHI_API_KEY_ID") or "").strip()
     private_key_pem = (os.getenv("KALSHI_PRIVATE_KEY_PEM") or "").strip()
     if not api_key_id or not private_key_pem:
@@ -740,7 +748,10 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     last_ptb_log = 0.0
     poly_ptb = None
     kalshi_ptb = None
-    while int(time.time()) < close_time - HARD_DEADLINE_T:
+    arb_deadline = HARD_DEADLINE_T
+    if ARB_KALSHI_ALIGN_PTB:
+        arb_deadline = min(HARD_DEADLINE_T, ARB_KALSHI_PTB_RTD_OFFSET_SEC)
+    while int(time.time()) < close_time - arb_deadline:
         # Alinhamento Price to Beat (opcional)
         if ARB_KALSHI_ALIGN_PTB:
             if time.time() < window_ts:
@@ -755,7 +766,17 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
                     except Exception:
                         kalshi_ptb = None
             if poly_ptb is None:
+                # Tentar PTB oficial (Gamma) durante a janela
                 poly_ptb = get_price_to_beat(slug)
+                # Fallback: usar RTDS no T-2s como proxy de PTB
+                if poly_ptb is None and time.time() >= close_time - ARB_KALSHI_PTB_RTD_OFFSET_SEC:
+                    rtd_symbol = "btcusdt" if market.startswith("btc") else "ethusdt"
+                    poly_ptb = get_rtds_price(rtd_symbol)
+                    if poly_ptb is not None:
+                        print(
+                            f"  [{market.upper()}] Arb Kalshi: PTB via RTDS {poly_ptb:.2f} ({rtd_symbol})",
+                            flush=True,
+                        )
             if poly_ptb is None or kalshi_ptb is None:
                 now = time.time()
                 if now - last_ptb_log >= 30:
