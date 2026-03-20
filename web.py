@@ -370,7 +370,6 @@ class ConfigUpdate(BaseModel):
     kalshi_api_passphrase: Optional[str] = None  # opcional (futuro)
     telegram_bot_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
-    kalshi_align_ptb: Optional[bool] = None
     starting_bankroll: Optional[float] = None
     min_bet: Optional[float] = None
     bot_mode: Optional[Literal["safe", "spike_ai", "moon", "aggressive", "degen", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"]] = None
@@ -382,8 +381,6 @@ class ConfigUpdate(BaseModel):
     odd_master_bet: Optional[float] = None
     bet_90_95: Optional[float] = None
     arbitragem_pct: Optional[float] = None
-    use_chainlink_open: Optional[bool] = None
-    max_delta_open_usd: Optional[float] = None
 
 
 class ConfigResponse(BaseModel):
@@ -400,13 +397,10 @@ class ConfigResponse(BaseModel):
     odd_master_bet: Optional[float] = None
     bet_90_95: Optional[float] = None
     arbitragem_pct: Optional[float] = None
-    use_chainlink_open: bool = True
-    max_delta_open_usd: float = 0.0
     has_private_key: bool
     has_api_creds: bool
     has_kalshi_api_creds: bool
     has_telegram: bool
-    kalshi_align_ptb: bool = False
     access_ok: bool = True
     access_reason: Optional[str] = None
     trial_ends_at: Optional[str] = None
@@ -552,13 +546,10 @@ def get_config(user: dict = Depends(get_current_user)):
             odd_master_bet=None,
             bet_90_95=None,
             arbitragem_pct=None,
-            use_chainlink_open=True,
-            max_delta_open_usd=0.0,
             has_private_key=False,
             has_api_creds=False,
             has_kalshi_api_creds=False,
             has_telegram=False,
-            kalshi_align_ptb=False,
             access_ok=True,
             access_reason="trial",
             trial_ends_at=None,
@@ -582,13 +573,10 @@ def get_config(user: dict = Depends(get_current_user)):
         odd_master_bet=row.get("odd_master_bet") and float(row["odd_master_bet"]) or None,
         bet_90_95=row.get("bet_90_95") and float(row["bet_90_95"]) or None,
         arbitragem_pct=row.get("arbitragem_pct") and float(row["arbitragem_pct"]) or None,
-        use_chainlink_open=bool(row.get("use_chainlink_open") if row.get("use_chainlink_open") is not None else True),
-        max_delta_open_usd=float(row.get("max_delta_open_usd") or 0),
         has_private_key=bool(row.get("private_key") and str(row.get("private_key", "")).strip() and row.get("private_key") != "0x..."),
         has_api_creds=bool(row.get("api_key") and row.get("api_secret") and row.get("api_passphrase")),
         has_kalshi_api_creds=bool(row.get("kalshi_api_key") and row.get("kalshi_api_secret")),
         has_telegram=bool(row.get("telegram_bot_token") and row.get("telegram_chat_id")),
-        kalshi_align_ptb=bool(row.get("kalshi_align_ptb") or False),
         access_ok=can_use,
         access_reason=reason,
         trial_ends_at=str(trial_ends_at) if trial_ends_at else None,
@@ -623,8 +611,6 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
         data["telegram_bot_token"] = upd.telegram_bot_token
     if upd.telegram_chat_id is not None:
         data["telegram_chat_id"] = upd.telegram_chat_id
-    if upd.kalshi_align_ptb is not None:
-        data["kalshi_align_ptb"] = bool(upd.kalshi_align_ptb)
     if upd.starting_bankroll is not None:
         data["starting_bankroll"] = upd.starting_bankroll
     if upd.min_bet is not None:
@@ -647,10 +633,6 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
         data["bet_90_95"] = upd.bet_90_95
     if upd.arbitragem_pct is not None:
         data["arbitragem_pct"] = int(upd.arbitragem_pct)
-    if upd.use_chainlink_open is not None:
-        data["use_chainlink_open"] = bool(upd.use_chainlink_open)
-    if upd.max_delta_open_usd is not None:
-        data["max_delta_open_usd"] = max(0.0, float(upd.max_delta_open_usd))
     _config_to_supabase(user["id"], user["_token"], data, user.get("email"))
     return {"ok": True}
 
@@ -940,13 +922,9 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     env["MAX_TOKEN_PRICE"] = str(row.get("max_token_price", 0.9))
     env["ARB_MIN_PROFIT_PCT"] = str(row.get("arb_min_profit_pct", 0.04))
     env["BOT_MARKETS"] = ",".join(markets_list)
-    _use_cl = row.get("use_chainlink_open")
-    env["USE_CHAINLINK_OPEN"] = "1" if (_use_cl is None or _use_cl) else "0"
-    env["MAX_DELTA_OPEN_USD"] = str(max(0.0, float(row.get("max_delta_open_usd") or 0)))
     if mode == "arb_kalshi":
         env["KALSHI_API_KEY_ID"] = row.get("kalshi_api_key", "")
         env["KALSHI_PRIVATE_KEY_PEM"] = row.get("kalshi_api_secret", "")
-        env["KALSHI_ALIGN_PTB"] = "1" if row.get("kalshi_align_ptb") else "0"
     if row.get("telegram_bot_token") and row.get("telegram_chat_id"):
         env["TELEGRAM_BOT_TOKEN"] = row.get("telegram_bot_token", "")
         env["TELEGRAM_CHAT_ID"] = row.get("telegram_chat_id", "")

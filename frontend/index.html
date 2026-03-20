@@ -247,25 +247,9 @@
             <label class="block text-sm text-gray-400 mb-1">Arbitragem — % da banca</label>
             <input type="number" id="cfg-arbitragem-pct" min="1" max="100" placeholder="25" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
           </div>
-          <div class="border-t border-border pt-3 mt-2">
-            <p class="text-sm text-gray-400 mb-2">Arb Kalshi — alinhamento do Price to Beat</p>
-            <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" id="cfg-kalshi-align-ptb" class="rounded border-border" />
-              <span class="text-sm">Operar apenas se PTB alinhado (BTC ≤ $10, ETH ≤ $1)</span>
-            </label>
-          </div>
           <div>
             <label class="block text-sm text-gray-400 mb-1">Preço máx. token (ex: 0.90)</label>
             <input type="number" id="cfg-max-token" step="0.01" min="0" max="1" placeholder="0.90" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" />
-          </div>
-          <div class="border-t border-border pt-3 mt-2">
-            <p class="text-sm text-gray-400 mb-2">Chainlink (resolução)</p>
-            <label class="flex items-center gap-2 cursor-pointer mb-2">
-              <input type="checkbox" id="cfg-use-chainlink-open" class="rounded border-border" />
-              <span class="text-sm">Usar abertura Chainlink (Price to Beat) — alinha TA à resolução</span>
-            </label>
-            <label class="block text-sm text-gray-400 mb-1">Pular janela se delta Binance–Chainlink &gt; (USD)</label>
-            <input type="number" id="cfg-max-delta-open-usd" step="1" min="0" placeholder="0 = não filtrar" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2" title="0 = não filtrar; ex: 50 = pular se |delta| &gt; 50 USD" />
           </div>
         </div>
         <div class="mt-4">
@@ -712,9 +696,6 @@
         getEl('cfg-bankroll').value = c.starting_bankroll ?? 10;
         getEl('cfg-min-bet').value = c.min_bet ?? 5;
         getEl('cfg-max-token').value = c.max_token_price ?? 0.9;
-        getEl('cfg-use-chainlink-open').checked = c.use_chainlink_open !== false;
-        getEl('cfg-max-delta-open-usd').value = c.max_delta_open_usd ?? 0;
-        getEl('cfg-kalshi-align-ptb').checked = c.kalshi_align_ptb === true;
         if (c.safe_bet != null) getEl('cfg-safe-bet').value = c.safe_bet;
         if (c.arbitragem_pct != null) getEl('cfg-arbitragem-pct').value = c.arbitragem_pct;
         if (c.safe_bet != null) getEl('bot-safe-bet').value = c.safe_bet;
@@ -908,9 +889,7 @@
         starting_bankroll: parseFloat(getEl('cfg-bankroll').value) || 10,
         min_bet: parseFloat(getEl('cfg-min-bet').value) || 5,
         max_token_price: parseFloat(getEl('cfg-max-token').value) || 0.9,
-        use_chainlink_open: getEl('cfg-use-chainlink-open').checked,
-        max_delta_open_usd: parseFloat(getEl('cfg-max-delta-open-usd').value) || 0,
-        kalshi_align_ptb: getEl('cfg-kalshi-align-ptb').checked
+        
       };
       const key = getEl('input-private-key').value.trim();
       if (key && key !== '0x...') payload.private_key = key;

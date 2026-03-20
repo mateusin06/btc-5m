@@ -13,7 +13,6 @@ BINANCE_TICKER = "https://api.binance.com/api/v3/ticker/price"
 BINANCE_KLINE = "https://api.binance.com/api/v3/klines"
 BINANCE_TRADES = "https://api.binance.com/api/v3/trades"
 GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
-GAMMA_MARKETS = "https://gamma-api.polymarket.com/markets"
 
 
 def get_rtds_price(symbol: str, timeout: float = 2.5) -> Optional[float]:
@@ -326,9 +325,7 @@ def _get_price_to_beat_legacy(slug: str) -> Optional[float]:
     Returns: preço float ou None se ainda não disponível/erro.
     """
     try:
-        event = get_market_by_slug(slug)
-        if not event:
-            return None
+        return None
         meta = event.get("eventMetadata") or {}
         if isinstance(meta, str):
             try:

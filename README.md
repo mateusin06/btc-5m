@@ -175,19 +175,6 @@ Score positivo → Up, negativo → Down. Confiança = `min(|score|/MAX_SCORE, 1
 
 **Arbitragem:** o bot primeiro verifica se comprar Up e Down ao mesmo tempo dá lucro garantido (soma dos preços ≤ 1 − `ARB_MIN_PROFIT_PCT`). Se sim, executa as duas pernas. Se não, aposta no lado do sinal de TA e tenta comprar o lado oposto a preço que dê lucro; se não achar, fica só com a aposta direcional.
 
-## Chainlink vs Binance (valor na resolução)
-
-A **resolução** na Polymarket usa o **oráculo Chainlink** (abertura e fechamento da janela). O bot pode usar o **Price to Beat** (abertura Chainlink) como referência para a TA em vez da abertura Binance, alinhando direção e delta ao mesmo preço que será usado no resultado.
-
-- **USE_CHAINLINK_OPEN=1** (padrão): usa abertura Chainlink quando a Gamma API retorna `priceToBeat`; o log mostra o delta Binance–Chainlink em USD e %.
-- **MAX_DELTA_OPEN_USD**: se > 0, pula a janela quando o delta de abertura (Binance − Chainlink) em valor absoluto for maior que esse valor (ex.: 50), evitando operar quando as fontes estão muito dessincronizadas.
-
-Assim você obtém valor ao **alinhar a referência da aposta à referência da resolução** (Chainlink) e, opcionalmente, filtrar janelas com divergência grande entre exchanges.
-
-## Resolução (dry run)
-
-O resultado no dry run usa a mesma fonte da Polymarket: **Chainlink** (Price to Beat da próxima janela = fechamento da nossa). O bot espera até **2 minutos** por esse dado; se não aparecer, usa outcomePrices da Gamma ou Binance como fallback.
-
 ## Avisos
 
 - **Risco**: Trading envolve perda de capital. Use apenas o que pode perder.

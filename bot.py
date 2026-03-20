@@ -99,9 +99,6 @@ MIN_SHARES = 5
 POLY_MIN_ORDER_USD = 1.0  # Polymarket exige mínimo $1 por ordem (marketable BUY)
 LIMIT_FALLBACK_PRICE = 0.95
 MAX_TOKEN_PRICE = float(os.getenv("MAX_TOKEN_PRICE", "0.98"))
-# Resolução é por Chainlink: usar Price to Beat (abertura Chainlink) alinha TA ao resultado
-USE_CHAINLINK_OPEN = (os.getenv("USE_CHAINLINK_OPEN", "1").strip().lower() in ("1", "true", "yes"))
-MAX_DELTA_OPEN_USD = float(os.getenv("MAX_DELTA_OPEN_USD", "0"))  # 0 = não filtrar; >0 = pular se |delta Binance-Chainlink| > valor
 
 # Última janela em que apostamos por mercado (evita repetir no mesmo mercado na mesma janela)
 _last_bet_window_by_market: dict[str, int] = {}
@@ -922,6 +919,7 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
                 # Checa se a ordem chegou a executar antes de tentar novamente
                 if _poly_has_recent_trade(client, token_id):
                     print(f"  [{market.upper()}] Arb Kalshi: ordem Poly confirmada após erro de rede.", flush=True)
+                    _last_bet_window_by_market[market] = window_ts
                     ok = True
                 else:
                     ok = False
@@ -931,6 +929,8 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
         if not ok:
             time.sleep(ARB_KALSHI_POLL_INTERVAL)
             continue
+
+        _last_bet_window_by_market[market] = window_ts
 
         # Kalshi (FOK) - após Poly: tentar até o final da janela no mesmo preço ou melhor
         kalshi_ok = False
@@ -989,19 +989,6 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
             return False
 
         print(f"  [{market.upper()}] Arb Kalshi executado | N={contracts}", flush=True)
-        poly_ptb = get_price_to_beat(slug)
-        kalshi_ptb = _parse_kalshi_price_to_beat(kalshi_market)
-        if kalshi_ptb is None:
-            try:
-                detail = kalshi_get_market(api_key_id, private_key_pem, kalshi_ticker)
-                kalshi_ptb = _parse_kalshi_price_to_beat(detail.get("market") or detail)
-            except Exception:
-                kalshi_ptb = None
-        print(
-            f"  [{market.upper()}] Arb Kalshi: PTB Poly {poly_ptb if poly_ptb is not None else 'n/a'} | "
-            f"PTB Kalshi {kalshi_ptb if kalshi_ptb is not None else 'n/a'}",
-            flush=True,
-        )
         _tg_send(
             f"[{market.upper()}] ARB_KALSHI: Poly {trade_direction.upper()} @ {poly_price:.2f} + "
             f"Kalshi {kalshi_side.upper()} @ {kalshi_price:.2f} | N={contracts} | lucro {((1-total_cost)*100):.2f}%"
@@ -1017,7 +1004,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     active_mode: modo fixado no arranque (evita mistura safe/aggressive); se None, usa FROZEN_MODE ou config.mode.
     """
     global _last_bet_window_by_market
-    from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market, get_btc_candles_1m, get_price_to_beat, get_open_delta_binance_chainlink
+    from api import get_market_by_slug, extract_token_ids, get_price_by_market, get_candles_by_market, get_btc_candles_1m
     from strategy import analyze, MIN_CANDLES_FOR_FULL_TA
 
     # Fonte única de verdade: SEMPRE usar FROZEN_MODE quando estiver definido (evita 2 compras com modos diferentes)
@@ -1085,19 +1072,6 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     event = get_market_by_slug(slug)
     tokens = extract_token_ids(event) if event else None
 
-    # Delta Binance vs Chainlink: resolução é por Chainlink; usar Price to Beat alinha TA ao resultado
-    delta_info = get_open_delta_binance_chainlink(slug, market, window_ts, is_15m)
-    if delta_info and USE_CHAINLINK_OPEN and delta_info.get("chainlink_open") is not None:
-        window_open = delta_info["chainlink_open"]
-        d_usd = delta_info.get("delta_usd", 0)
-        d_pct = delta_info.get("delta_pct", 0)
-        print(f"  [{market.upper()}] Abertura Chainlink (Price to Beat) ${window_open:.2f} | delta Binance–Chainlink: ${d_usd:+.2f} ({d_pct:+.3f}%)", flush=True)
-        if MAX_DELTA_OPEN_USD > 0 and abs(d_usd) > MAX_DELTA_OPEN_USD:
-            print(f"  [{market.upper()}] Delta |${d_usd:.2f}| > {MAX_DELTA_OPEN_USD:.0f} USD, pulando janela.", flush=True)
-            return False
-    elif delta_info and not USE_CHAINLINK_OPEN:
-        d_usd = delta_info.get("delta_usd", 0)
-        print(f"  [{market.upper()}] Abertura Binance ${window_open:.2f} | delta Binance–Chainlink: ${d_usd:+.2f} (Chainlink não usado)", flush=True)
 
     tick_prices = []
     best_score = 0.0
