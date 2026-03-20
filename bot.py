@@ -701,6 +701,9 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     base_market = market.replace("15m", "")
     slug = f"{base_market}-updown-15m-{window_ts}"
 
+    if _last_ptb_skip_window_by_market.get(market) == window_ts:
+        return False
+
     event = get_market_by_slug(slug)
     tokens = extract_token_ids(event) if event else None
     if not tokens or len(tokens) < 2:
