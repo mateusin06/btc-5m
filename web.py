@@ -370,6 +370,7 @@ class ConfigUpdate(BaseModel):
     kalshi_api_passphrase: Optional[str] = None  # opcional (futuro)
     telegram_bot_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
+    kalshi_align_ptb: Optional[bool] = None
     starting_bankroll: Optional[float] = None
     min_bet: Optional[float] = None
     bot_mode: Optional[Literal["safe", "spike_ai", "moon", "aggressive", "degen", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"]] = None
@@ -405,6 +406,7 @@ class ConfigResponse(BaseModel):
     has_api_creds: bool
     has_kalshi_api_creds: bool
     has_telegram: bool
+    kalshi_align_ptb: bool = False
     access_ok: bool = True
     access_reason: Optional[str] = None
     trial_ends_at: Optional[str] = None
@@ -556,6 +558,7 @@ def get_config(user: dict = Depends(get_current_user)):
             has_api_creds=False,
             has_kalshi_api_creds=False,
             has_telegram=False,
+            kalshi_align_ptb=False,
             access_ok=True,
             access_reason="trial",
             trial_ends_at=None,
@@ -585,6 +588,7 @@ def get_config(user: dict = Depends(get_current_user)):
         has_api_creds=bool(row.get("api_key") and row.get("api_secret") and row.get("api_passphrase")),
         has_kalshi_api_creds=bool(row.get("kalshi_api_key") and row.get("kalshi_api_secret")),
         has_telegram=bool(row.get("telegram_bot_token") and row.get("telegram_chat_id")),
+        kalshi_align_ptb=bool(row.get("kalshi_align_ptb") or False),
         access_ok=can_use,
         access_reason=reason,
         trial_ends_at=str(trial_ends_at) if trial_ends_at else None,
@@ -619,6 +623,8 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
         data["telegram_bot_token"] = upd.telegram_bot_token
     if upd.telegram_chat_id is not None:
         data["telegram_chat_id"] = upd.telegram_chat_id
+    if upd.kalshi_align_ptb is not None:
+        data["kalshi_align_ptb"] = bool(upd.kalshi_align_ptb)
     if upd.starting_bankroll is not None:
         data["starting_bankroll"] = upd.starting_bankroll
     if upd.min_bet is not None:
@@ -940,6 +946,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     if mode == "arb_kalshi":
         env["KALSHI_API_KEY_ID"] = row.get("kalshi_api_key", "")
         env["KALSHI_PRIVATE_KEY_PEM"] = row.get("kalshi_api_secret", "")
+        env["KALSHI_ALIGN_PTB"] = "1" if row.get("kalshi_align_ptb") else "0"
     if row.get("telegram_bot_token") and row.get("telegram_chat_id"):
         env["TELEGRAM_BOT_TOKEN"] = row.get("telegram_bot_token", "")
         env["TELEGRAM_CHAT_ID"] = row.get("telegram_chat_id", "")

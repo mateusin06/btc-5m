@@ -78,6 +78,9 @@ MOON_CVD_TRADE_LIMIT = 500        # MOON: trades recentes usados para CVD
 ARB_KALSHI_MIN_PROFIT_PCT = 0.05  # Arb Kalshi: lucro mínimo (5%)
 ARB_KALSHI_SLIPPAGE_PCT = 0.01    # Arb Kalshi: buffer extra para slippage/fees
 ARB_KALSHI_POLL_INTERVAL = 2
+ARB_KALSHI_ALIGN_PTB = os.getenv("KALSHI_ALIGN_PTB", "0").strip().lower() in ("1", "true", "yes")
+ARB_KALSHI_PTB_DIFF_BTC = 10.0
+ARB_KALSHI_PTB_DIFF_ETH = 1.0
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -581,6 +584,34 @@ def _parse_kalshi_close_ts(market_obj: dict) -> Optional[int]:
     return None
 
 
+def _parse_kalshi_price_to_beat(market_obj: dict) -> Optional[float]:
+    # Tenta campos conhecidos (Kalshi pode variar por produto)
+    candidates = [
+        ("strike_price_dollars", "dollars"),
+        ("strike_price_decimal", "dollars"),
+        ("strike_price", "dollars"),
+        ("price_to_beat", "dollars"),
+        ("strike_price_cents", "cents"),
+        ("strike_price_in_cents", "cents"),
+    ]
+    for key, kind in candidates:
+        if key in market_obj and market_obj[key] is not None:
+            try:
+                v = float(market_obj[key])
+                return v / 100.0 if kind == "cents" else v
+            except Exception:
+                pass
+    meta = market_obj.get("metadata") or market_obj.get("event_metadata") or {}
+    for key, kind in candidates:
+        if key in meta and meta[key] is not None:
+            try:
+                v = float(meta[key])
+                return v / 100.0 if kind == "cents" else v
+            except Exception:
+                pass
+    return None
+
+
 def _find_kalshi_active_market(api_key_id: str, private_key_pem: str, series_ticker: str) -> tuple[Optional[dict], Optional[int]]:
     try:
         from kalshi_api import get_markets
@@ -617,7 +648,7 @@ def _find_kalshi_active_market(api_key_id: str, private_key_pem: str, series_tic
 
 def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     """Arbitragem Polymarket vs Kalshi (BTC/ETH 15m)."""
-    from api import get_market_by_slug, extract_token_ids, get_token_price, get_token_price_from_event
+    from api import get_market_by_slug, extract_token_ids, get_token_price, get_token_price_from_event, get_price_to_beat
     api_key_id = (os.getenv("KALSHI_API_KEY_ID") or "").strip()
     private_key_pem = (os.getenv("KALSHI_PRIVATE_KEY_PEM") or "").strip()
     if not api_key_id or not private_key_pem:
@@ -650,6 +681,20 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     if not tokens or len(tokens) < 2:
         print(f"  [{market.upper()}] Arb Kalshi: mercado Polymarket não encontrado para slug {slug}.", flush=True)
         return False
+
+    # Alinhamento Price to Beat (opcional)
+    if ARB_KALSHI_ALIGN_PTB:
+        poly_ptb = get_price_to_beat(slug)
+        kalshi_ptb = _parse_kalshi_price_to_beat(kalshi_market)
+        if poly_ptb is not None and kalshi_ptb is not None:
+            diff = abs(float(poly_ptb) - float(kalshi_ptb))
+            max_diff = ARB_KALSHI_PTB_DIFF_BTC if market.startswith("btc") else ARB_KALSHI_PTB_DIFF_ETH
+            if diff > max_diff:
+                print(
+                    f"  [{market.upper()}] Arb Kalshi: PTB desalinhado | Poly {poly_ptb:.2f} vs Kalshi {kalshi_ptb:.2f} | diff {diff:.2f} > {max_diff:.2f}, pulando janela.",
+                    flush=True,
+                )
+                return False
 
     print(f"  [{market.upper()}] Arb Kalshi: usando ticker {kalshi_ticker} | slug {slug}", flush=True)
 
