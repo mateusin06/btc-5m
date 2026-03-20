@@ -12,6 +12,7 @@ BINANCE_TICKER = "https://api.binance.com/api/v3/ticker/price"
 BINANCE_KLINE = "https://api.binance.com/api/v3/klines"
 BINANCE_TRADES = "https://api.binance.com/api/v3/trades"
 GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
+GAMMA_MARKETS = "https://gamma-api.polymarket.com/markets"
 
 
 def get_btc_price() -> Optional[float]:
@@ -331,6 +332,29 @@ def get_price_to_beat(slug: str) -> Optional[float]:
                     return float(m.group(2).replace(",", ""))
                 except Exception:
                     pass
+        # Fallback extra: buscar direto no endpoint /markets
+        try:
+            r2 = requests.get(GAMMA_MARKETS, params={"slug": slug}, timeout=10)
+            if r2.ok:
+                data2 = r2.json()
+                mkt = None
+                if isinstance(data2, list) and data2:
+                    mkt = data2[0]
+                elif isinstance(data2, dict):
+                    mkt = data2
+                if mkt:
+                    m_meta2 = mkt.get("marketMetadata") or mkt.get("metadata") or {}
+                    if isinstance(m_meta2, str):
+                        try:
+                            m_meta2 = json.loads(m_meta2)
+                        except Exception:
+                            m_meta2 = {}
+                    if isinstance(m_meta2, dict):
+                        ptb3 = m_meta2.get("priceToBeat") or m_meta2.get("price_to_beat") or m_meta2.get("priceToBeatUsd") or m_meta2.get("price_to_beat_usd")
+                        if ptb3 is not None:
+                            return float(ptb3)
+        except Exception:
+            pass
         return None
     except (TypeError, ValueError, KeyError):
         return None
