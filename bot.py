@@ -698,6 +698,9 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
 
     # Alinhamento Price to Beat (opcional)
     if ARB_KALSHI_ALIGN_PTB:
+        # Evita checar PTB antes do inÃ­cio da janela (a Gamma costuma preencher sÃ³ depois)
+        if time.time() < window_ts:
+            return False
         poly_ptb = get_price_to_beat(slug)
         kalshi_ptb = _parse_kalshi_price_to_beat(kalshi_market)
         if kalshi_ptb is None:

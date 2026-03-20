@@ -441,7 +441,13 @@ def get_price_to_beat(slug: str) -> Optional[float]:
             if found is not None:
                 return found
         try:
-            r2 = requests.get(GAMMA_MARKETS, params={"slug": slug, "cb": f"{time.time():.3f}"}, timeout=10)
+            headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
+            r2 = requests.get(
+                GAMMA_MARKETS,
+                params={"slug": slug, "cb": f"{time.time():.3f}", "cache": f"{time.time():.3f}"},
+                headers=headers,
+                timeout=10,
+            )
             if r2.ok:
                 data2 = r2.json()
                 found = _extract_ptb(data2)
@@ -498,8 +504,14 @@ def get_market_by_slug(slug: str) -> Optional[dict]:
     Returns: dict com markets, token_ids, etc ou None
     """
     try:
-        # Gamma API pode servir cache antigo; usar cache-buster para pegar PTB atual
-        r = requests.get(GAMMA_EVENTS, params={"slug": slug, "cb": f"{time.time():.3f}"}, timeout=10)
+        # Gamma API pode servir cache antigo; usar cache-buster + headers no-cache para pegar PTB atual
+        headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
+        r = requests.get(
+            GAMMA_EVENTS,
+            params={"slug": slug, "cb": f"{time.time():.3f}", "cache": f"{time.time():.3f}"},
+            headers=headers,
+            timeout=10,
+        )
         r.raise_for_status()
         data = r.json()
         if isinstance(data, list) and data:
