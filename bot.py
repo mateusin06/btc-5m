@@ -683,8 +683,6 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
         return False
 
     # Alinhamento Price to Beat (opcional)
-    poly_ptb = None
-    kalshi_ptb = None
     if ARB_KALSHI_ALIGN_PTB:
         poly_ptb = get_price_to_beat(slug)
         kalshi_ptb = _parse_kalshi_price_to_beat(kalshi_market)
@@ -950,16 +948,13 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
             return False
 
         print(f"  [{market.upper()}] Arb Kalshi executado | N={contracts}", flush=True)
-        if poly_ptb is None:
-            poly_ptb = get_price_to_beat(slug)
-        if kalshi_ptb is None:
-            kalshi_ptb = _parse_kalshi_price_to_beat(kalshi_market)
-        if poly_ptb is not None or kalshi_ptb is not None:
-            print(
-                f"  [{market.upper()}] Arb Kalshi: PTB Poly {poly_ptb if poly_ptb is not None else 'n/a'} | "
-                f"PTB Kalshi {kalshi_ptb if kalshi_ptb is not None else 'n/a'}",
-                flush=True,
-            )
+        poly_ptb = get_price_to_beat(slug)
+        kalshi_ptb = _parse_kalshi_price_to_beat(kalshi_market)
+        print(
+            f"  [{market.upper()}] Arb Kalshi: PTB Poly {poly_ptb if poly_ptb is not None else 'n/a'} | "
+            f"PTB Kalshi {kalshi_ptb if kalshi_ptb is not None else 'n/a'}",
+            flush=True,
+        )
         _tg_send(
             f"[{market.upper()}] ARB_KALSHI: Poly {trade_direction.upper()} @ {poly_price:.2f} + "
             f"Kalshi {kalshi_side.upper()} @ {kalshi_price:.2f} | N={contracts} | lucro {((1-total_cost)*100):.2f}%"
