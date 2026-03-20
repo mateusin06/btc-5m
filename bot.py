@@ -78,11 +78,6 @@ MOON_CVD_TRADE_LIMIT = 500        # MOON: trades recentes usados para CVD
 ARB_KALSHI_MIN_PROFIT_PCT = 0.05  # Arb Kalshi: lucro mínimo (5%)
 ARB_KALSHI_SLIPPAGE_PCT = 0.01    # Arb Kalshi: buffer extra para slippage/fees
 ARB_KALSHI_POLL_INTERVAL = 2
-ARB_KALSHI_ALIGN_PTB = os.getenv("KALSHI_ALIGN_PTB", "0").strip().lower() in ("1", "true", "yes")
-ARB_KALSHI_PTB_DIFF_BTC = 15.0
-ARB_KALSHI_PTB_DIFF_ETH = 1.0
-ARB_KALSHI_PTB_WAIT_SEC = 20
-ARB_KALSHI_PTB_RTD_OFFSET_SEC = 2
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -113,8 +108,6 @@ _last_bet_window_by_market: dict[str, int] = {}
 _bankroll_lock = threading.Lock()
 # Modo fixado no arranque (fonte única de verdade; evita safe quando iniciou em aggressive)
 FROZEN_MODE: Optional[str] = None
-# Evitar spam de PTB desalinhado por janela
-_last_ptb_skip_window_by_market: dict[str, int] = {}
 
 # (RTDS removido)
 
@@ -672,7 +665,6 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
         extract_token_ids,
         get_token_price,
         get_token_price_from_event,
-        get_price_to_beat,
     )
     api_key_id = (os.getenv("KALSHI_API_KEY_ID") or "").strip()
     private_key_pem = (os.getenv("KALSHI_PRIVATE_KEY_PEM") or "").strip()
@@ -701,17 +693,14 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     base_market = market.replace("15m", "")
     slug = f"{base_market}-updown-15m-{window_ts}"
 
-    if _last_ptb_skip_window_by_market.get(market) == window_ts:
-        return False
-
     event = get_market_by_slug(slug)
     tokens = extract_token_ids(event) if event else None
     if not tokens or len(tokens) < 2:
         print(f"  [{market.upper()}] Arb Kalshi: mercado Polymarket não encontrado para slug {slug}.", flush=True)
         return False
 
-    # Alinhamento Price to Beat (opcional)
-    if False and ARB_KALSHI_ALIGN_PTB:
+    # Alinhamento Price to Beat (removido)
+    if False:
         # Evita checar PTB antes do inÃ­cio da janela (a Gamma costuma preencher sÃ³ depois)
         if time.time() < window_ts:
             return False
@@ -751,46 +740,8 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
 
     last_debug = 0.0
     last_liq_log = 0.0
-    last_ptb_log = 0.0
-    poly_ptb = None
-    kalshi_ptb = None
     arb_deadline = HARD_DEADLINE_T
     while int(time.time()) < close_time - arb_deadline:
-        # Alinhamento Price to Beat (opcional)
-        if ARB_KALSHI_ALIGN_PTB:
-            if time.time() < window_ts:
-                time.sleep(ARB_KALSHI_POLL_INTERVAL)
-                continue
-            if kalshi_ptb is None:
-                kalshi_ptb = _parse_kalshi_price_to_beat(kalshi_market)
-                if kalshi_ptb is None:
-                    try:
-                        detail = kalshi_get_market(api_key_id, private_key_pem, kalshi_ticker)
-                        kalshi_ptb = _parse_kalshi_price_to_beat(detail.get("market") or detail)
-                    except Exception:
-                        kalshi_ptb = None
-            if poly_ptb is None:
-                poly_ptb = get_price_to_beat(slug)
-            if poly_ptb is None or kalshi_ptb is None:
-                now = time.time()
-                if now - last_ptb_log >= 30:
-                    last_ptb_log = now
-                    print(
-                        f"  [{market.upper()}] Arb Kalshi: PTB indisponível | Poly {poly_ptb} | Kalshi {kalshi_ptb} | slug {slug}. Aguardando...",
-                        flush=True,
-                    )
-                time.sleep(ARB_KALSHI_POLL_INTERVAL)
-                continue
-            diff = abs(float(poly_ptb) - float(kalshi_ptb))
-            max_diff = ARB_KALSHI_PTB_DIFF_BTC if market.startswith("btc") else ARB_KALSHI_PTB_DIFF_ETH
-            if diff > max_diff:
-                if _last_ptb_skip_window_by_market.get(market) != window_ts:
-                    _last_ptb_skip_window_by_market[market] = window_ts
-                    print(
-                        f"  [{market.upper()}] Arb Kalshi: PTB desalinhado | Poly {poly_ptb:.2f} vs Kalshi {kalshi_ptb:.2f} | diff {diff:.2f} > {max_diff:.2f}, pulando janela.",
-                        flush=True,
-                    )
-                return False
         # Preços Polymarket
         price_up = get_token_price(tokens[0], "BUY") or (get_token_price_from_event(event, "up") if event else None)
         price_down = get_token_price(tokens[1], "BUY") or (get_token_price_from_event(event, "down") if event else None)
