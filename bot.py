@@ -14,6 +14,7 @@ import threading
 import statistics
 import math
 import requests
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -426,6 +427,39 @@ def _poly_available_shares(client, token_id: str, price_cap: float) -> tuple[flo
     return (total, best_ask)
 
 
+def _parse_trade_ts(raw) -> Optional[int]:
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        ts = int(raw)
+        return ts if ts > 1_000_000_000 else None
+    try:
+        s = str(raw)
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    except Exception:
+        return None
+
+
+def _poly_has_recent_trade(client, token_id: str, max_age_sec: int = 30) -> bool:
+    try:
+        from py_clob_client.clob_types import TradeParams
+    except Exception:
+        return False
+    try:
+        now = int(time.time())
+        trades = client.get_trades(TradeParams(asset_id=token_id))
+        for t in trades[:10]:
+            ts = _parse_trade_ts(t.get("timestamp") or t.get("created_at") or t.get("time"))
+            if ts and (now - ts) <= max_age_sec:
+                return True
+    except Exception:
+        return False
+    return False
+
+
 def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
     from py_clob_client.clob_types import OrderArgs, OrderType
     from py_clob_client.order_builder.constants import BUY
@@ -798,7 +832,15 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
                 print(f"  [{market.upper()}] Arb Kalshi: Polymarket FOK falhou, não enviando limit para evitar desbalanceamento.", flush=True)
         except Exception as e:
             print(f"  [{market.upper()}] Arb Kalshi: falha Polymarket {e!s}", flush=True)
-            ok = False
+            if "Request exception" in str(e):
+                # Checa se a ordem chegou a executar antes de tentar novamente
+                if _poly_has_recent_trade(client, token_id):
+                    print(f"  [{market.upper()}] Arb Kalshi: ordem Poly confirmada após erro de rede.", flush=True)
+                    ok = True
+                else:
+                    ok = False
+            else:
+                ok = False
 
         if not ok:
             time.sleep(ARB_KALSHI_POLL_INTERVAL)
