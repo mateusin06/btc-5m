@@ -4,6 +4,7 @@ APIs externas: Binance (preços) e Polymarket Gamma (mercados).
 """
 
 import json
+import os
 import time
 from typing import Optional
 
