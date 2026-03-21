@@ -78,6 +78,9 @@ MOON_CVD_TRADE_LIMIT = 500        # MOON: trades recentes usados para CVD
 ARB_KALSHI_MIN_PROFIT_PCT = 0.05  # Arb Kalshi: lucro mínimo (5%)
 ARB_KALSHI_SLIPPAGE_PCT = 0.01    # Arb Kalshi: buffer extra para slippage/fees
 ARB_KALSHI_POLL_INTERVAL = 2
+ARB_KALSHI_PTB_DIFF_BTC = 15.0
+ARB_KALSHI_PTB_DIFF_ETH = 1.0
+ARB_KALSHI_PTB_WAIT_SEC = 2
 
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID = 137
@@ -102,6 +105,7 @@ MAX_TOKEN_PRICE = float(os.getenv("MAX_TOKEN_PRICE", "0.98"))
 
 # Última janela em que apostamos por mercado (evita repetir no mesmo mercado na mesma janela)
 _last_bet_window_by_market: dict[str, int] = {}
+_chainlink_ptb_cache: dict[tuple[str, int], float] = {}
 _bankroll_lock = threading.Lock()
 # Modo fixado no arranque (fonte única de verdade; evita safe quando iniciou em aggressive)
 FROZEN_MODE: Optional[str] = None
@@ -120,6 +124,7 @@ class Config:
     original_bankroll: float
     fixed_bet_safe: Optional[float] = None
     arbitragem_bet_pct: Optional[float] = None
+    kalshi_align_ptb: Optional[bool] = None
     fixed_bet_only_hedge: Optional[float] = None
     fixed_bet_odd_master: Optional[float] = None
     fixed_bet_90_95: Optional[float] = None
@@ -166,6 +171,25 @@ def seconds_until_next_window_15m() -> float:
     return (next_start + 1) - now
 
 
+def _get_poly_ptb_chainlink(market: str, window_ts: int) -> Optional[float]:
+    """Captura o PTB (abertura) via Chainlink on-chain na virada exata da janela."""
+    key = (market, window_ts)
+    if key in _chainlink_ptb_cache:
+        return _chainlink_ptb_cache[key]
+    now = time.time()
+    if now < window_ts:
+        time.sleep(max(0, window_ts - now))
+    # Se passou muito do início da janela, não é mais o PTB exato
+    if time.time() - window_ts > ARB_KALSHI_PTB_WAIT_SEC:
+        return None
+    from api import get_chainlink_latest_price_polygon
+    price = get_chainlink_latest_price_polygon(market)
+    if price is None:
+        return None
+    _chainlink_ptb_cache[key] = price
+    return price
+
+
 def seconds_until_close(window_ts: int, window_sec: int) -> int:
     """Segundos até o fechamento da janela (window_ts + window_sec - now)."""
     return (window_ts + window_sec) - int(time.time())
@@ -174,6 +198,7 @@ def seconds_until_close(window_ts: int, window_sec: int) -> int:
 def load_config() -> Config:
     bankroll = float(os.getenv("STARTING_BANKROLL", "10.0"))
     min_bet = float(os.getenv("MIN_BET", "5.0"))
+    kalshi_align_ptb = os.getenv("KALSHI_ALIGN_PTB", "0").strip().lower() in ("1", "true", "yes")
     return Config(
         dry_run=False,
         mode=os.getenv("BOT_MODE", "safe"),
@@ -182,6 +207,7 @@ def load_config() -> Config:
         bankroll=bankroll,
         min_bet=min_bet,
         original_bankroll=bankroll,
+        kalshi_align_ptb=kalshi_align_ptb,
         markets=_parse_markets(),
     )
 
@@ -695,6 +721,52 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     if not tokens or len(tokens) < 2:
         print(f"  [{market.upper()}] Arb Kalshi: mercado Polymarket não encontrado para slug {slug}.", flush=True)
         return False
+
+    if config.kalshi_align_ptb:
+        from api import get_chainlink_latest_price_polygon
+
+        now = time.time()
+        if now < window_ts:
+            time.sleep(max(0, window_ts - now))
+
+        poly_ptb = None
+        kalshi_ptb = None
+        for attempt in range(1, 6):
+            poly_ptb = get_chainlink_latest_price_polygon(base_market)
+            kalshi_ptb = _parse_kalshi_price_to_beat(kalshi_market)
+            if kalshi_ptb is None:
+                try:
+                    detail = kalshi_get_market(api_key_id, private_key_pem, kalshi_ticker)
+                    kalshi_ptb = _parse_kalshi_price_to_beat(detail.get("market") or detail)
+                except Exception:
+                    kalshi_ptb = None
+
+            print(
+                f"  [{market.upper()}] PTB tentativa {attempt}/5 | Poly {poly_ptb} | Kalshi {kalshi_ptb}",
+                flush=True,
+            )
+            if poly_ptb is not None and kalshi_ptb is not None:
+                break
+            if attempt < 5:
+                time.sleep(10)
+
+        if poly_ptb is None or kalshi_ptb is None:
+            print(
+                f"  [{market.upper()}] Arb Kalshi: PTB indisponÃ­vel | Poly {poly_ptb} | Kalshi {kalshi_ptb}. Pulando janela.",
+                flush=True,
+            )
+            _last_bet_window_by_market[market] = window_ts
+            return False
+
+        diff = abs(float(poly_ptb) - float(kalshi_ptb))
+        max_diff = ARB_KALSHI_PTB_DIFF_BTC if market.startswith("btc") else ARB_KALSHI_PTB_DIFF_ETH
+        if diff > max_diff:
+            print(
+                f"  [{market.upper()}] Arb Kalshi: PTB desalinhado | Poly {poly_ptb:.2f} vs Kalshi {kalshi_ptb:.2f} | diff {diff:.2f} > {max_diff:.2f}, pulando janela.",
+                flush=True,
+            )
+            _last_bet_window_by_market[market] = window_ts
+            return False
 
     # Alinhamento Price to Beat (removido)
     if False:

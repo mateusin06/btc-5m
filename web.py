@@ -381,6 +381,7 @@ class ConfigUpdate(BaseModel):
     odd_master_bet: Optional[float] = None
     bet_90_95: Optional[float] = None
     arbitragem_pct: Optional[float] = None
+    kalshi_align_ptb: Optional[bool] = None
 
 
 class ConfigResponse(BaseModel):
@@ -397,6 +398,7 @@ class ConfigResponse(BaseModel):
     odd_master_bet: Optional[float] = None
     bet_90_95: Optional[float] = None
     arbitragem_pct: Optional[float] = None
+    kalshi_align_ptb: bool = False
     has_private_key: bool
     has_api_creds: bool
     has_kalshi_api_creds: bool
@@ -546,6 +548,7 @@ def get_config(user: dict = Depends(get_current_user)):
             odd_master_bet=None,
             bet_90_95=None,
             arbitragem_pct=None,
+            kalshi_align_ptb=False,
             has_private_key=False,
             has_api_creds=False,
             has_kalshi_api_creds=False,
@@ -573,6 +576,7 @@ def get_config(user: dict = Depends(get_current_user)):
         odd_master_bet=row.get("odd_master_bet") and float(row["odd_master_bet"]) or None,
         bet_90_95=row.get("bet_90_95") and float(row["bet_90_95"]) or None,
         arbitragem_pct=row.get("arbitragem_pct") and float(row["arbitragem_pct"]) or None,
+        kalshi_align_ptb=bool(row.get("kalshi_align_ptb")),
         has_private_key=bool(row.get("private_key") and str(row.get("private_key", "")).strip() and row.get("private_key") != "0x..."),
         has_api_creds=bool(row.get("api_key") and row.get("api_secret") and row.get("api_passphrase")),
         has_kalshi_api_creds=bool(row.get("kalshi_api_key") and row.get("kalshi_api_secret")),
@@ -633,6 +637,8 @@ def update_config(upd: ConfigUpdate, user: dict = Depends(get_current_user)):
         data["bet_90_95"] = upd.bet_90_95
     if upd.arbitragem_pct is not None:
         data["arbitragem_pct"] = int(upd.arbitragem_pct)
+    if upd.kalshi_align_ptb is not None:
+        data["kalshi_align_ptb"] = upd.kalshi_align_ptb
     _config_to_supabase(user["id"], user["_token"], data, user.get("email"))
     return {"ok": True}
 
@@ -925,6 +931,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     if mode == "arb_kalshi":
         env["KALSHI_API_KEY_ID"] = row.get("kalshi_api_key", "")
         env["KALSHI_PRIVATE_KEY_PEM"] = row.get("kalshi_api_secret", "")
+        env["KALSHI_ALIGN_PTB"] = "1" if row.get("kalshi_align_ptb") else "0"
     if row.get("telegram_bot_token") and row.get("telegram_chat_id"):
         env["TELEGRAM_BOT_TOKEN"] = row.get("telegram_bot_token", "")
         env["TELEGRAM_CHAT_ID"] = row.get("telegram_chat_id", "")

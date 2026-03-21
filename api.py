@@ -11,6 +11,13 @@ import requests
 
 BINANCE_TICKER = "https://api.binance.com/api/v3/ticker/price"
 BINANCE_KLINE = "https://api.binance.com/api/v3/klines"
+POLYGON_RPC_URL = os.getenv("POLYGON_RPC_URL", "").strip() or "https://polygon-bor-rpc.publicnode.com"
+
+# Chainlink Data Feeds (Polygon Mainnet)
+CHAINLINK_FEED_POLYGON = {
+    "btc": "0xc907E116054Ad103354f2D350FD2514433D57F6f",
+    "eth": "0xF9680D99D6C9589e2a93a78A04A279e509205945",
+}
 BINANCE_TRADES = "https://api.binance.com/api/v3/trades"
 GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
 
@@ -451,6 +458,83 @@ def get_window_open_binance(market: str, window_ts: int, is_15m: bool = False) -
         if candle_start_sec == window_ts:
             return float(c["o"])
     return float(candles[0]["o"]) if candles else None
+
+
+_chainlink_decimals_cache: dict[str, int] = {}
+
+
+def _rpc_call(rpc_url: str, method: str, params: list) -> Optional[dict]:
+    try:
+        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+        r = requests.post(rpc_url, json=payload, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        if "error" in data:
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def _decode_int256(hex_data: str) -> Optional[int]:
+    if not hex_data or not hex_data.startswith("0x"):
+        return None
+    raw = int(hex_data, 16)
+    if raw >= 2 ** 255:
+        raw -= 2 ** 256
+    return raw
+
+
+def _decode_uint256(hex_data: str) -> Optional[int]:
+    if not hex_data or not hex_data.startswith("0x"):
+        return None
+    return int(hex_data, 16)
+
+
+def _get_chainlink_decimals(rpc_url: str, feed_addr: str) -> Optional[int]:
+    if feed_addr in _chainlink_decimals_cache:
+        return _chainlink_decimals_cache[feed_addr]
+    # decimals() selector: 0x313ce567
+    data = "0x313ce567"
+    resp = _rpc_call(rpc_url, "eth_call", [{"to": feed_addr, "data": data}, "latest"])
+    if not resp:
+        return None
+    result = resp.get("result")
+    if not result:
+        return None
+    dec = _decode_uint256(result)
+    if dec is None:
+        return None
+    _chainlink_decimals_cache[feed_addr] = int(dec)
+    return int(dec)
+
+
+def get_chainlink_latest_price_polygon(market: str) -> Optional[float]:
+    """
+    Preço atual do feed Chainlink no Polygon (BTC/USD ou ETH/USD).
+    """
+    if not POLYGON_RPC_URL:
+        return None
+    feed_addr = CHAINLINK_FEED_POLYGON.get(market)
+    if not feed_addr:
+        return None
+    dec = _get_chainlink_decimals(POLYGON_RPC_URL, feed_addr)
+    if dec is None:
+        return None
+    # latestRoundData() selector: 0x50d25bcd
+    data = "0x50d25bcd"
+    resp = _rpc_call(POLYGON_RPC_URL, "eth_call", [{"to": feed_addr, "data": data}, "latest"])
+    if not resp:
+        return None
+    result = resp.get("result")
+    if not result or not result.startswith("0x") or len(result) < 2 + 64 * 5:
+        return None
+    # Decode answer (int256) at slot 1 (offset 32 bytes)
+    answer_hex = "0x" + result[2 + 64 : 2 + 64 * 2]
+    answer = _decode_int256(answer_hex)
+    if answer is None:
+        return None
+    return float(answer) / (10 ** dec)
 
 
 def get_open_delta_binance_chainlink(slug: str, market: str, window_ts: int, is_15m: bool = False) -> Optional[dict]:
