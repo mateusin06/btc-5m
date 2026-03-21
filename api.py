@@ -522,16 +522,22 @@ def get_chainlink_latest_price_polygon(market: str) -> Optional[float]:
     dec = _get_chainlink_decimals(POLYGON_RPC_URL, feed_addr)
     if dec is None:
         return None
-    # latestRoundData() selector: 0x50d25bcd
-    data = "0x50d25bcd"
+    # latestRoundData() selector: 0xfeaf968c
+    data = "0xfeaf968c"
     resp = _rpc_call(POLYGON_RPC_URL, "eth_call", [{"to": feed_addr, "data": data}, "latest"])
     if not resp:
         return None
     result = resp.get("result")
-    if not result or not result.startswith("0x") or len(result) < 2 + 64 * 5:
+    if not result or not result.startswith("0x"):
         return None
-    # Decode answer (int256) at slot 1 (offset 32 bytes)
-    answer_hex = "0x" + result[2 + 64 : 2 + 64 * 2]
+    if len(result) >= 2 + 64 * 5:
+        # Decode answer (int256) at slot 1 (offset 32 bytes)
+        answer_hex = "0x" + result[2 + 64 : 2 + 64 * 2]
+    elif len(result) == 2 + 64:
+        # Fallback: latestAnswer() style
+        answer_hex = result
+    else:
+        return None
     answer = _decode_int256(answer_hex)
     if answer is None:
         return None
