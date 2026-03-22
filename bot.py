@@ -1125,9 +1125,10 @@ def _run_multi_confirm_signal(config: Config, market: str, window_ts: int, windo
                 f"conf {signal.confidence:.0%} | {signal.reason}"
             )
             print(log, flush=True)
+            market_link = f"https://polymarket.com/market/{slug}"
             _tg_send(
                 f"[{market.upper()}] SINAL MC+RD: {signal.direction.upper()} | "
-                f"conf {signal.confidence:.0%} | {signal.reason}"
+                f"conf {signal.confidence:.0%} | {signal.reason}\n{market_link}"
             )
             _last_bet_window_by_market[market] = window_ts
             return True
