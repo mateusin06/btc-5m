@@ -14,6 +14,16 @@ Uso no bot:
 from dataclasses import dataclass
 from typing import Optional
 
+# Multi-Confirmacao + Regime + Divergencia
+MULTI_MIN_CONF = 0.65
+MULTI_MIN_CONFIRMATIONS_TREND = 4
+MULTI_MIN_CONFIRMATIONS_RANGE = 3
+MULTI_DELTA_CONFIRM_PCT = 0.01
+MULTI_TREND_STRENGTH = 0.0007
+MULTI_TREND_SLOPE_PCT = 0.0008
+MULTI_DIVERGENCE_RSI_GAP = 4.0
+MULTI_DIVERGENCE_PRICE_GAP_PCT = 0.001
+
 # Pesos dos indicadores (window delta domina; menos peso em sinais ruidosos de dia)
 WEIGHT_WINDOW_DELTA = 7
 WEIGHT_MICRO_MOMENTUM = 1.5   # Reduzido: últimos 2 candles muito voláteis de dia
@@ -47,6 +57,17 @@ class AnalysisResult:
     estimated_p_up: float = 0.5  # P(Up) estimada para checagem EV+
 
 
+@dataclass
+class MultiConfirmSignal:
+    direction: str  # "up" or "down"
+    confidence: float
+    regime: str  # "trend" or "range"
+    confirmations: int
+    total_confirmations: int
+    reason: str
+    details: dict
+
+
 def _ema(values: list[float], period: int) -> float:
     """Calcula EMA dos últimos `period` valores."""
     if not values or len(values) < period:
@@ -76,6 +97,177 @@ def _rsi(prices: list[float], period: int = 14) -> float:
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
+
+def _rsi_series(prices: list[float], period: int = 14) -> list[Optional[float]]:
+    out: list[Optional[float]] = [None] * len(prices)
+    if len(prices) < period + 1:
+        return out
+    for i in range(period, len(prices)):
+        out[i] = _rsi(prices[i - period : i + 1], period)
+    return out
+
+
+def _volume_surge_dir(prices: list[float], volumes: list[float]) -> int:
+    if len(volumes) < 6:
+        return 0
+    recent_avg = sum(volumes[-3:]) / 3
+    prior_avg = sum(volumes[-6:-3]) / 3
+    if prior_avg <= 0:
+        return 0
+    if recent_avg >= 1.8 * prior_avg:
+        return 1 if prices[-1] > prices[-2] else -1
+    return 0
+
+
+def _tick_trend_dir(tick_prices: Optional[list[float]]) -> int:
+    if not tick_prices or len(tick_prices) < 5:
+        return 0
+    first = tick_prices[0]
+    last = tick_prices[-1]
+    move_pct = (last - first) / first * 100
+    ups = sum(1 for i in range(1, len(tick_prices)) if tick_prices[i] > tick_prices[i - 1])
+    consistency = ups / (len(tick_prices) - 1) if len(tick_prices) > 1 else 0.5
+    if abs(move_pct) >= 0.008 and (consistency >= 0.65 or consistency <= 0.35):
+        return 1 if consistency >= 0.65 else -1
+    return 0
+
+
+def _detect_divergence(prices: list[float], rsis: list[Optional[float]]) -> Optional[str]:
+    if len(prices) < 20:
+        return None
+    prev = prices[-20:-10]
+    recent = prices[-10:]
+    low1 = min(prev)
+    low2 = min(recent)
+    high1 = max(prev)
+    high2 = max(recent)
+    idx1_low = prev.index(low1) + (len(prices) - 20)
+    idx2_low = recent.index(low2) + (len(prices) - 10)
+    idx1_high = prev.index(high1) + (len(prices) - 20)
+    idx2_high = recent.index(high2) + (len(prices) - 10)
+    rsi1_low = rsis[idx1_low] if rsis[idx1_low] is not None else 50.0
+    rsi2_low = rsis[idx2_low] if rsis[idx2_low] is not None else 50.0
+    rsi1_high = rsis[idx1_high] if rsis[idx1_high] is not None else 50.0
+    rsi2_high = rsis[idx2_high] if rsis[idx2_high] is not None else 50.0
+    if low2 < low1 * (1 - MULTI_DIVERGENCE_PRICE_GAP_PCT) and rsi2_low > rsi1_low + MULTI_DIVERGENCE_RSI_GAP:
+        return "bullish"
+    if high2 > high1 * (1 + MULTI_DIVERGENCE_PRICE_GAP_PCT) and rsi2_high < rsi1_high - MULTI_DIVERGENCE_RSI_GAP:
+        return "bearish"
+    return None
+
+
+def _detect_regime(prices: list[float], ema9: float, ema21: float) -> str:
+    if not prices or len(prices) < 22:
+        return "range"
+    last = prices[-1]
+    trend_strength = abs(ema9 - ema21) / last if last else 0.0
+    slope = (prices[-1] - prices[-5]) / last if last else 0.0
+    if trend_strength >= MULTI_TREND_STRENGTH and abs(slope) >= MULTI_TREND_SLOPE_PCT:
+        return "trend"
+    return "range"
+
+
+def analyze_multi_confirm(
+    window_open_price: float,
+    current_price: float,
+    candles_1m: list[dict],
+    tick_prices: Optional[list[float]] = None,
+) -> Optional[MultiConfirmSignal]:
+    if not candles_1m or len(candles_1m) < 21:
+        return None
+    prices = [c["c"] for c in candles_1m]
+    volumes = [c.get("v", 0) for c in candles_1m]
+
+    delta_pct = (current_price - window_open_price) / window_open_price * 100
+    ema9 = _ema(prices, 9)
+    ema21 = _ema(prices, 21)
+    ema_dir = 1 if ema9 > ema21 else (-1 if ema9 < ema21 else 0)
+    regime = _detect_regime(prices, ema9, ema21)
+
+    rsis = _rsi_series(prices, 14)
+    rsi_now = rsis[-1] if rsis[-1] is not None else _rsi(prices, 14)
+    divergence = _detect_divergence(prices, rsis)
+
+    vol_dir = _volume_surge_dir(prices, volumes)
+    tick_dir = _tick_trend_dir(tick_prices)
+
+    micro_dir = 1 if prices[-1] > prices[-3] else (-1 if prices[-1] < prices[-3] else 0)
+    acc_dir = 1 if (prices[-1] - prices[-2]) > (prices[-2] - prices[-3]) else (-1 if (prices[-1] - prices[-2]) < (prices[-2] - prices[-3]) else 0)
+
+    def count_confirmations(direction: str) -> int:
+        up = direction == "up"
+        total = 0
+        if up and delta_pct >= MULTI_DELTA_CONFIRM_PCT:
+            total += 1
+        if (not up) and delta_pct <= -MULTI_DELTA_CONFIRM_PCT:
+            total += 1
+        if (ema_dir == 1 and up) or (ema_dir == -1 and not up):
+            total += 1
+        if (micro_dir == 1 and up) or (micro_dir == -1 and not up):
+            total += 1
+        if (acc_dir == 1 and up) or (acc_dir == -1 and not up):
+            total += 1
+        if (vol_dir == 1 and up) or (vol_dir == -1 and not up):
+            total += 1
+        if (tick_dir == 1 and up) or (tick_dir == -1 and not up):
+            total += 1
+        if (divergence == "bullish" and up) or (divergence == "bearish" and not up):
+            total += 1
+        return total
+
+    total_confirmations = 7
+    trend_dir = "up" if ema_dir > 0 else ("down" if ema_dir < 0 else "")
+
+    details = {
+        "delta_pct": delta_pct,
+        "ema_dir": ema_dir,
+        "micro_dir": micro_dir,
+        "acc_dir": acc_dir,
+        "vol_dir": vol_dir,
+        "tick_dir": tick_dir,
+        "divergence": divergence,
+        "rsi": rsi_now,
+        "regime": regime,
+    }
+
+    if regime == "trend" and trend_dir:
+        if divergence and ((divergence == "bullish" and trend_dir == "down") or (divergence == "bearish" and trend_dir == "up")):
+            return None
+        confs = count_confirmations(trend_dir)
+        confidence = min(1.0, confs / total_confirmations)
+        if confs >= MULTI_MIN_CONFIRMATIONS_TREND and confidence >= MULTI_MIN_CONF:
+            reason = f"regime=trend | confs={confs}/{total_confirmations} | ema={trend_dir} | delta={delta_pct:.3f}% | rsi={rsi_now:.1f} | div={divergence or 'none'}"
+            return MultiConfirmSignal(
+                direction=trend_dir,
+                confidence=confidence,
+                regime=regime,
+                confirmations=confs,
+                total_confirmations=total_confirmations,
+                reason=reason,
+                details=details,
+            )
+        return None
+
+    if regime == "range" and divergence:
+        direction = "up" if divergence == "bullish" else "down"
+        confs = count_confirmations(direction)
+        confidence = min(1.0, confs / total_confirmations)
+        if direction == "up" and rsi_now > 45:
+            return None
+        if direction == "down" and rsi_now < 55:
+            return None
+        if confs >= MULTI_MIN_CONFIRMATIONS_RANGE and confidence >= MULTI_MIN_CONF:
+            reason = f"regime=range | confs={confs}/{total_confirmations} | div={divergence} | delta={delta_pct:.3f}% | rsi={rsi_now:.1f}"
+            return MultiConfirmSignal(
+                direction=direction,
+                confidence=confidence,
+                regime=regime,
+                confirmations=confs,
+                total_confirmations=total_confirmations,
+                reason=reason,
+                details=details,
+            )
+    return None
 
 def _window_delta_weight(delta_pct: float) -> float:
     """Peso do window delta baseado na magnitude (mais assertivo: ignora micro-ruído)."""

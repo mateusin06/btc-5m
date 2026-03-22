@@ -372,7 +372,7 @@ class ConfigUpdate(BaseModel):
     telegram_chat_id: Optional[str] = None
     starting_bankroll: Optional[float] = None
     min_bet: Optional[float] = None
-    bot_mode: Optional[Literal["safe", "spike_ai", "moon", "aggressive", "degen", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"]] = None
+    bot_mode: Optional[Literal["safe", "spike_ai", "moon", "multi_confirm", "aggressive", "degen", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"]] = None
     aggressive_bet_pct: Optional[float] = None
     max_token_price: Optional[float] = None
     arb_min_profit_pct: Optional[float] = None
@@ -411,7 +411,7 @@ class ConfigResponse(BaseModel):
 
 
 class BotStartRequest(BaseModel):
-    mode: Literal["safe", "spike_ai", "moon", "aggressive", "dry_run", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"] = Field(..., description="Modo de trading")
+    mode: Literal["safe", "spike_ai", "moon", "multi_confirm", "aggressive", "dry_run", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"] = Field(..., description="Modo de trading")
     dry_run: bool = Field(False, description="Se True, simula sem ordens reais")
     markets: List[Literal["btc", "eth", "btc15m", "eth15m"]] = Field(default=["btc"], description="Mercados: btc, eth, btc15m, eth15m (lista)")
     safe_bet: Optional[float] = None
@@ -856,6 +856,8 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     markets_list = [m for m in markets_list if m in ("btc", "eth", "btc15m", "eth15m")]
     if mode == "arb_kalshi":
         markets_list = [m for m in markets_list if m in ("btc15m", "eth15m")]
+    elif mode == "multi_confirm":
+        markets_list = [m for m in markets_list if m in ("btc", "eth", "btc15m", "eth15m")]
     else:
         markets_list = [m for m in markets_list if m != "eth15m"]
     # Não adicionar nenhum mercado: só os selecionados pelo usuário (ex.: só btc15m = zero operação em btc 5min)

@@ -316,6 +316,7 @@
             <select id="bot-mode" class="w-full bg-[#0f1116] border border-border rounded-lg px-3 py-2">
               <option value="spike_ai">SPIKE AI — safe + aprovação da IA (Ollama)</option>
               <option value="moon">MOON — CVD (divergência + momentum) com mão fixa safe</option>
+              <option value="multi_confirm">Multi-Confirmação + Regime + Divergência (sinais)</option>
               <option value="arb_kalshi">Arb Kalshi — Polymarket vs Kalshi (BTC/ETH 15min)</option>
             </select>
           </div>
@@ -345,7 +346,7 @@
             <button type="button" id="btn-bot-start" class="px-4 py-2 bg-accent text-black font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Iniciar</button>
             <button type="button" id="btn-bot-stop" class="px-4 py-2 bg-danger text-white font-medium rounded-lg hover:opacity-90 disabled:opacity-50">Parar</button>
           </div>
-          <p class="text-xs text-muted">Entrada por <strong>Spike</strong> (salto de score + confiança mín. 40%) ou <strong>T-5s</strong> (melhor sinal com confiança mín. 40%).</p>
+          <p class="text-xs text-muted">Entrada por <strong>Spike</strong> (salto de score + confiança mín. 40%) ou <strong>T-5s</strong> (melhor sinal com confiança mín. 40%). No modo <strong>Multi-Confirmação</strong>, o bot apenas envia sinais (sem ordens).</p>
         </div>
       </div>
       </div>
@@ -719,7 +720,7 @@
         getEl('input-telegram-chat').value = '';
         // Sincronizar dropdown "Modo" do Iniciar com a config salva (evita iniciar em safe sem querer)
         const modeEl = getEl('bot-mode');
-        if (c.bot_mode && ['spike_ai','moon','arb_kalshi'].includes(c.bot_mode)) {
+        if (c.bot_mode && ['spike_ai','moon','multi_confirm','arb_kalshi'].includes(c.bot_mode)) {
           modeEl.value = c.bot_mode;
         } else {
           modeEl.value = 'spike_ai';

@@ -49,6 +49,7 @@ MODES = {
     "safe": {"min_confidence": 0.72},
     "spike_ai": {"min_confidence": 0.72},  # Igual ao safe, mas com gate de IA (Ollama) antes de executar
     "moon": {"min_confidence": 0.40},  # Estratégia MOON: CVD (divergência + momentum) com mão fixa safe
+    "multi_confirm": {"min_confidence": 0.65},  # Multi-Confirmacao + Regime + Divergencia (sinais)
     "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.58},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
@@ -1071,6 +1072,72 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
     return False
 
 
+def _run_multi_confirm_signal(config: Config, market: str, window_ts: int, window_sec: int, slug: str) -> bool:
+    from api import get_price_by_market, get_candles_by_market, get_btc_candles_1m
+    from strategy import analyze_multi_confirm, MIN_CANDLES_FOR_FULL_TA
+
+    is_15m = market.endswith("15m")
+    close_time = window_ts + window_sec
+    monitor_secs = MONITOR_START_T_15M if is_15m else MONITOR_START_T
+
+    while True:
+        secs = seconds_until_close(window_ts, window_sec)
+        if secs <= monitor_secs:
+            break
+        if secs % 60 == 0 or secs <= 30:
+            print(f"  [{market.upper()}] Janela fecha em {secs}s... (slug: {slug})", flush=True)
+        time.sleep(1)
+
+    candle_limit = 15 if not is_15m else 5
+    candles = get_candles_by_market(market, limit=candle_limit)
+    window_open = None
+    for c in candles:
+        candle_start_sec = c["t"] // 1000
+        if candle_start_sec == window_ts:
+            window_open = c["o"]
+            break
+    if window_open is None:
+        if candles:
+            window_open = candles[-1]["o"] if is_15m else candles[0]["o"]
+        else:
+            window_open = get_price_by_market(market) or 0
+
+    if not window_open:
+        print(f"  [{market.upper()}] MC+RD: nao foi possivel obter preco de abertura.", flush=True)
+        _last_bet_window_by_market[market] = window_ts
+        return False
+
+    tick_prices: list[float] = []
+    while int(time.time()) < close_time - HARD_DEADLINE_T:
+        price = get_price_by_market(market)
+        if price:
+            tick_prices.append(price)
+        candle_limit_ta = max(30, MIN_CANDLES_FOR_FULL_TA)
+        candles = get_btc_candles_1m(limit=candle_limit_ta) if is_15m else get_candles_by_market(market, limit=candle_limit_ta)
+        if not candles or len(candles) < MIN_CANDLES_FOR_FULL_TA:
+            time.sleep(TA_POLL_INTERVAL)
+            continue
+        current_price = price or candles[-1]["c"]
+        signal = analyze_multi_confirm(window_open, current_price, candles, tick_prices[-30:] if tick_prices else None)
+        if signal is not None:
+            log = (
+                f"  [{market.upper()}] MC+RD: {signal.direction.upper()} | "
+                f"conf {signal.confidence:.0%} | {signal.reason}"
+            )
+            print(log, flush=True)
+            _tg_send(
+                f"[{market.upper()}] SINAL MC+RD: {signal.direction.upper()} | "
+                f"conf {signal.confidence:.0%} | {signal.reason}"
+            )
+            _last_bet_window_by_market[market] = window_ts
+            return True
+        time.sleep(TA_POLL_INTERVAL)
+
+    print(f"  [{market.upper()}] MC+RD: sem sinal valido, pulando janela.", flush=True)
+    _last_bet_window_by_market[market] = window_ts
+    return False
+
+
 def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = None, shared: Optional[dict] = None) -> bool:
     """Executa um ciclo para um mercado (btc, eth ou btc15m): espera, analisa, opera.
     active_mode: modo fixado no arranque (evita mistura safe/aggressive); se None, usa FROZEN_MODE ou config.mode.
@@ -1111,6 +1178,9 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     # Não apostar mais de uma vez na mesma janela por mercado (1 compra por mercado por janela)
     if _last_bet_window_by_market.get(market) == window_ts:
         return False
+
+    if active_mode == "multi_confirm":
+        return _run_multi_confirm_signal(config, market, window_ts, window_sec, slug)
 
     if active_mode == "arb_kalshi":
         return _run_kalshi_arb_cycle(config, market)
@@ -1825,7 +1895,7 @@ def main():
     global FROZEN_MODE
     parser = argparse.ArgumentParser(description="Polymarket BTC 5-Min Up/Down Bot")
     parser.add_argument("--dry-run", action="store_true", help="Simular sem ordens reais")
-    parser.add_argument("--mode", choices=["safe", "spike_ai", "moon", "aggressive", "degen", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"], help="Modo de trading")
+    parser.add_argument("--mode", choices=["safe", "spike_ai", "moon", "multi_confirm", "aggressive", "degen", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"], help="Modo de trading")
     parser.add_argument("--safe-bet", type=float, metavar="USD", help="Modo safe: valor fixo em USD por entrada")
     parser.add_argument("--only-hedge-bet", type=float, metavar="USD", help="Modo only_hedge_plus: valor fixo em USD por entrada")
     parser.add_argument("--odd-master-bet", type=float, metavar="USD", help="Modo odd_master: valor fixo em USD por entrada")
@@ -2013,6 +2083,8 @@ def main():
         print(f"SPIKE AI: igual ao safe + gate de IA (Ollama) | entrada fixa ${config.fixed_bet_safe:.2f} | AI_MIN_CONFIDENCE={AI_MIN_CONFIDENCE:.0%}", flush=True)
     if config.mode == "moon" and config.fixed_bet_safe is not None:
         print(f"MOON: estratégia CVD (divergência + momentum) com mão fixa safe | entrada fixa ${config.fixed_bet_safe:.2f}", flush=True)
+    if config.mode == "multi_confirm":
+        print("MC+RD: Multi-Confirmacao + Regime + Divergencia | apenas sinais (sem ordens)", flush=True)
     if config.mode == "only_hedge_plus":
         print(f"Only Hedge+: entrada fixa ${config.fixed_bet_only_hedge or config.min_bet:.2f} | só entra com EV+", flush=True)
     if config.mode == "odd_master":
