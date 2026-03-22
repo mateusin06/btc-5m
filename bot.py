@@ -78,7 +78,7 @@ MOON_CVD_TRADE_LIMIT = 500        # MOON: trades recentes usados para CVD
 ARB_KALSHI_MIN_PROFIT_PCT = 0.05  # Arb Kalshi: lucro mínimo (5%)
 ARB_KALSHI_SLIPPAGE_PCT = 0.01    # Arb Kalshi: buffer extra para slippage/fees
 ARB_KALSHI_POLL_INTERVAL = 2
-ARB_KALSHI_PTB_DIFF_BTC = 15.0
+ARB_KALSHI_PTB_DIFF_BTC = 20.0
 ARB_KALSHI_PTB_DIFF_ETH = 1.0
 ARB_KALSHI_PTB_WAIT_SEC = 2
 
