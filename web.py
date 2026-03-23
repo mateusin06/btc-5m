@@ -1367,20 +1367,28 @@ def _norm_cdf(x: float, mu: float, sigma: float) -> float:
     return 0.5 * (1 + math.erf(z))
 
 
-def _forecast_max_and_sigma(city: dict, unit: str) -> Optional[tuple[float, float]]:
+def _forecast_open_meteo(city: dict, unit: str, target_date: datetime) -> Optional[tuple[float, float]]:
     try:
+        date_str = target_date.strftime("%Y-%m-%d")
         params = {
             "latitude": city["lat"],
             "longitude": city["lon"],
             "hourly": "temperature_2m",
             "timezone": "auto",
             "temperature_unit": "fahrenheit" if unit == "fahrenheit" else "celsius",
+            "start_date": date_str,
+            "end_date": date_str,
         }
         r = requests.get(OPEN_METEO, params=params, timeout=10)
         if not r.ok:
             return None
         data = r.json()
+        times = data.get("hourly", {}).get("time") or []
         temps = data.get("hourly", {}).get("temperature_2m") or []
+        if not temps:
+            return None
+        if times and len(times) == len(temps):
+            temps = [t for t, ts in zip(temps, times) if ts.startswith(date_str)]
         if not temps:
             return None
         max_temp = max(temps)
@@ -1391,6 +1399,67 @@ def _forecast_max_and_sigma(city: dict, unit: str) -> Optional[tuple[float, floa
         return max_temp, sigma
     except Exception:
         return None
+
+
+def _forecast_meteostat(city: dict, unit: str, target_date: datetime) -> Optional[tuple[float, float]]:
+    try:
+        from meteostat import Daily, Point
+    except Exception:
+        return None
+    try:
+        day = target_date.date()
+        point = Point(city["lat"], city["lon"])
+        data = Daily(point, day, day).fetch()
+        if data is None or data.empty:
+            return None
+        row = data.iloc[0]
+        tmax = row.get("tmax")
+        tmin = row.get("tmin")
+        tavg = row.get("tavg")
+        if tmax is None or math.isnan(tmax):
+            tmax = tavg
+        if tmax is None or math.isnan(tmax):
+            return None
+        max_temp = float(tmax)
+        sigma = 1.0
+        if tmin is not None and not math.isnan(tmin):
+            sigma = max(1.0, (float(tmax) - float(tmin)) / 4.0)
+        if unit == "fahrenheit":
+            max_temp = max_temp * 9 / 5 + 32
+            sigma = sigma * 9 / 5
+        return max_temp, sigma
+    except Exception:
+        return None
+
+
+def _forecast_max_and_sigma(city: dict, unit: str, target_date: datetime) -> Optional[dict]:
+    open_result = _forecast_open_meteo(city, unit, target_date)
+    ms_result = _forecast_meteostat(city, unit, target_date)
+    if not open_result or not ms_result:
+        return None
+    open_max, open_sigma = open_result
+    ms_max, ms_sigma = ms_result
+    diff = abs(open_max - ms_max)
+    max_diff = 1.0 if unit == "celsius" else 2.0
+    if diff > max_diff:
+        return {
+            "status": "diverge",
+            "open_max": open_max,
+            "ms_max": ms_max,
+            "diff": diff,
+            "max_diff": max_diff,
+        }
+    combined_max = (open_max + ms_max) / 2.0
+    combined_sigma = max(1.0, (open_sigma + ms_sigma) / 2.0)
+    return {
+        "status": "ok",
+        "max_temp": combined_max,
+        "sigma": combined_sigma,
+        "open_max": open_max,
+        "ms_max": ms_max,
+        "diff": diff,
+        "max_diff": max_diff,
+    }
 
 
 def _range_prob(low: Optional[float], high: Optional[float], max_temp: float, sigma: float) -> float:
@@ -1474,10 +1543,22 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
             continue
         unit_texts = [(m.get("groupItemTitle") or m.get("question") or "") for m in markets]
         unit = _detect_unit(unit_texts, event.get("title") or "")
-        forecast = _forecast_max_and_sigma(city, unit)
-        if not forecast:
+        forecast_info = _forecast_max_and_sigma(city, unit, target_date)
+        if not forecast_info:
             items.append({"city": city["name"], "slug": slug, "status": "no_forecast"})
             continue
+        if forecast_info.get("status") != "ok":
+            items.append({
+                "city": city["name"],
+                "slug": slug,
+                "status": "forecast_diverge",
+                "open_max": forecast_info.get("open_max"),
+                "ms_max": forecast_info.get("ms_max"),
+                "diff": forecast_info.get("diff"),
+                "max_diff": forecast_info.get("max_diff"),
+            })
+            continue
+        forecast = (forecast_info["max_temp"], forecast_info["sigma"])
         best = None
         for m in markets:
             candidate = _best_ev_outcome_for_market(m, forecast)
@@ -1487,8 +1568,9 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
             items.append({"city": city["name"], "slug": slug, "status": "no_ev"})
             continue
         explanation = (
-            f"Max forecast {best['max_temp']:.1f} ({unit}) | sigma {best['sigma']:.1f} | "
-            f"prob {best['prob']*100:.1f}% | EV {best['ev']*100:.1f}%"
+            f"Max forecast {best['max_temp']:.1f} ({unit}) | "
+            f"Open-Meteo {forecast_info['open_max']:.1f} vs Meteostat {forecast_info['ms_max']:.1f} | "
+            f"sigma {best['sigma']:.1f} | prob {best['prob']*100:.1f}% | EV {best['ev']*100:.1f}%"
         )
         items.append({
             "city": city["name"],
