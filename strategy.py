@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 # Multi-Confirmacao + Regime + Divergencia
-MULTI_MIN_CONF = 0.65
-MULTI_MIN_CONFIRMATIONS_TREND = 4
+MULTI_MIN_CONF = 0.60
+MULTI_MIN_CONFIRMATIONS_TREND = 3
 MULTI_MIN_CONFIRMATIONS_RANGE = 3
 MULTI_DELTA_CONFIRM_PCT = 0.01
 MULTI_TREND_STRENGTH = 0.0007

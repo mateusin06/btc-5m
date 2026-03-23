@@ -37,13 +37,13 @@ except OSError:
 TRADES_FILE = DATA_DIR / "trades.jsonl"
 ENV_FILE = PROJECT_ROOT / ".env"  # Não usado para leitura/escrita; config é por variáveis de ambiente
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://thkvxvdjcxunitxpeivg.supabase.co").rstrip("/")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoa3Z4dmRqY3h1bml0eHBlaXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNzg3NDEsImV4cCI6MjA4Nzk1NDc0MX0.znZAXuiFZaU1R_6h6TYBXd-765pgoxmbditxRXrmHN8")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
 ADMIN_EMAIL = "malagueta.canal@gmail.com"
-SUPABASE_SERVICE_ROLE_KEY = (
-    os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-    or "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoa3Z4dmRqY3h1bml0eHBlaXZnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjM3ODc0MSwiZXhwIjoyMDg3OTU0NzQxfQ.5lJAxLoDkuINpkBmbM3iiJmK3wSnqHZA6ZxdcE6hDkI"
-)
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+
+if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    raise RuntimeError("SUPABASE_URL e SUPABASE_ANON_KEY devem ser definidos no ambiente.")
 PAYMENT_WALLET = "0x17Ddf5d22fCF360E8D0dAED4e83717aeb1d47836"
 
 CLOB_HOST = "https://clob.polymarket.com"
@@ -424,6 +424,7 @@ class BotStartRequest(BaseModel):
     stop_win_pct: Optional[float] = None
     stop_loss_enabled: bool = Field(False, description="Ativar stop loss (parar ao atingir % de perda)")
     stop_loss_pct: Optional[float] = None
+    signals_only: bool = Field(False, description="Se True, não executa ordens; apenas sinais no Telegram")
 
 
 class BotStatusResponse(BaseModel):
@@ -870,7 +871,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     # Em operação real, validar parâmetros obrigatórios por modo
     if not dry_run:
         min_bet = float(row.get("min_bet", 5))
-        if mode in ("safe", "spike_ai", "moon"):
+        if mode in ("safe", "spike_ai", "moon", "multi_confirm"):
             safe_bet = req.safe_bet if req.safe_bet is not None else (row.get("safe_bet") and float(row["safe_bet"]))
             if safe_bet is None or safe_bet < min_bet:
                 raise HTTPException(
@@ -959,10 +960,13 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         else:
             env["STOP_LOSS_PCT"] = "0"
 
+    if getattr(req, "signals_only", False):
+        env["SIGNALS_ONLY"] = "1"
+
     # Atualizar Supabase com o modo (e parâmetros) usados ao iniciar — assim bot_mode fica sincronizado
     try:
         start_config: dict = {"bot_mode": mode}
-        if mode in ("safe", "spike_ai", "moon") and (req.safe_bet is not None or (row.get("safe_bet") and float(row["safe_bet"]))):
+        if mode in ("safe", "spike_ai", "moon", "multi_confirm") and (req.safe_bet is not None or (row.get("safe_bet") and float(row["safe_bet"]))):
             start_config["safe_bet"] = req.safe_bet if req.safe_bet is not None else float(row["safe_bet"])
         if mode == "aggressive":
             start_config["aggressive_bet_pct"] = int(round(pct_aggressive))
@@ -981,7 +985,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     cmd = [sys.executable, str(PROJECT_ROOT / "bot.py"), "--mode", mode, "--markets", ",".join(markets_list)]
     if dry_run:
         cmd.append("--dry-run")
-    if mode in ("safe", "spike_ai", "moon"):
+    if mode in ("safe", "spike_ai", "moon", "multi_confirm"):
         safe_bet_val = req.safe_bet if req.safe_bet is not None else (float(row["safe_bet"]) if row.get("safe_bet") else None)
         if safe_bet_val is not None:
             cmd.extend(["--safe-bet", str(round(safe_bet_val, 2))])

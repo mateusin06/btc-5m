@@ -126,6 +126,7 @@ class Config:
     fixed_bet_safe: Optional[float] = None
     arbitragem_bet_pct: Optional[float] = None
     kalshi_align_ptb: Optional[bool] = None
+    signals_only: bool = False
     fixed_bet_only_hedge: Optional[float] = None
     fixed_bet_odd_master: Optional[float] = None
     fixed_bet_90_95: Optional[float] = None
@@ -200,6 +201,7 @@ def load_config() -> Config:
     bankroll = float(os.getenv("STARTING_BANKROLL", "10.0"))
     min_bet = float(os.getenv("MIN_BET", "5.0"))
     kalshi_align_ptb = os.getenv("KALSHI_ALIGN_PTB", "0").strip().lower() in ("1", "true", "yes")
+    signals_only = os.getenv("SIGNALS_ONLY", "0").strip().lower() in ("1", "true", "yes")
     return Config(
         dry_run=False,
         mode=os.getenv("BOT_MODE", "safe"),
@@ -209,6 +211,7 @@ def load_config() -> Config:
         min_bet=min_bet,
         original_bankroll=bankroll,
         kalshi_align_ptb=kalshi_align_ptb,
+        signals_only=signals_only,
         markets=_parse_markets(),
     )
 
@@ -1180,9 +1183,6 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     if _last_bet_window_by_market.get(market) == window_ts:
         return False
 
-    if active_mode == "multi_confirm":
-        return _run_multi_confirm_signal(config, market, window_ts, window_sec, slug)
-
     if active_mode == "arb_kalshi":
         return _run_kalshi_arb_cycle(config, market)
 
@@ -1378,6 +1378,38 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
 
             time.sleep(TA_POLL_INTERVAL)
             continue
+
+        # Modo Multi-Confirmacao + Regime + Divergencia
+        if active_mode == "multi_confirm":
+            from strategy import analyze_multi_confirm
+
+            candle_limit_ta = max(30, MIN_CANDLES_FOR_FULL_TA)
+            candles = get_btc_candles_1m(limit=candle_limit_ta) if is_15m else get_candles_by_market(market, limit=candle_limit_ta)
+            if not candles or len(candles) < MIN_CANDLES_FOR_FULL_TA:
+                time.sleep(TA_POLL_INTERVAL)
+                continue
+            current_price = price or candles[-1]["c"]
+            signal = analyze_multi_confirm(
+                window_open,
+                float(current_price),
+                candles,
+                tick_prices[-30:] if tick_prices else None,
+            )
+            if signal is None:
+                time.sleep(TA_POLL_INTERVAL)
+                continue
+            trade_direction = signal.direction
+            fired = True
+            final_result = None
+            print(
+                f"  [{market.upper()}] MC+RD: {signal.direction.upper()} | conf {signal.confidence:.0%} | {signal.reason}",
+                flush=True,
+            )
+            _tg_send(
+                f"[{market.upper()}] MC+RD: {signal.direction.upper()} | conf {signal.confidence:.0%} | {signal.reason}\n"
+                f"https://polymarket.com/market/{slug}"
+            )
+            break
 
         # Modo arbitragem: prioridade para arb pura a cada iteração (Up+Down < 1-margem)
         if active_mode == "arbitragem" and tokens and len(tokens) == 2 and event:
@@ -1575,6 +1607,15 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         print(f"  [{market.upper()}] Sem sinal válido, pulando janela.", flush=True)
         return False
 
+    if config.signals_only:
+        print(f"  [{market.upper()}] Sinal confirmado ({trade_direction.upper()}) | apenas sinais, sem ordem.", flush=True)
+        _tg_send(
+            f"[{market.upper()}] SINAL: {trade_direction.upper()} | apenas sinais (sem ordem)\n"
+            f"https://polymarket.com/market/{slug}"
+        )
+        _last_bet_window_by_market[market] = window_ts
+        return True
+
     if active_mode == "90_95":
         print(f"  [{market.upper()}] 90-95: sinal válido -> {trade_direction.upper()}, calculando aposta e executando.", flush=True)
 
@@ -1611,7 +1652,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         except (ValueError, TypeError):
             pass
 
-    if active_mode in ("safe", "spike_ai", "moon") and config.fixed_bet_safe is not None:
+    if active_mode in ("safe", "spike_ai", "moon", "multi_confirm") and config.fixed_bet_safe is not None:
         bet_size = config.fixed_bet_safe
     elif active_mode == "only_hedge_plus":
         bet_size = config.fixed_bet_only_hedge if config.fixed_bet_only_hedge is not None else config.min_bet
@@ -1807,16 +1848,42 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
             for _ in range(ORDER_MAX_FOK_RETRIES):
                 if int(time.time()) >= close_time:
                     break
-                ok = place_fok_order(client, token_id, bet_size)
+                try:
+                    ok = place_fok_order(client, token_id, bet_size)
+                except Exception as e:
+                    if "Request exception" in str(e):
+                        if _poly_has_recent_trade(client, token_id):
+                            print(f"  [{market.upper()}] Ordem confirmada após erro de rede (trade recente).", flush=True)
+                            _last_bet_window_by_market[market] = window_ts
+                            return True
+                        print(f"  [{market.upper()}] Erro de rede; sem trade recente, tentando novamente...", flush=True)
+                        time.sleep(ORDER_RETRY_INTERVAL)
+                        continue
+                    raise
                 if ok:
                     break
+                if _poly_has_recent_trade(client, token_id):
+                    print(f"  [{market.upper()}] Ordem confirmada após falha FOK (trade recente).", flush=True)
+                    _last_bet_window_by_market[market] = window_ts
+                    return True
                 time.sleep(ORDER_RETRY_INTERVAL)
             if not ok:
+                if _poly_has_recent_trade(client, token_id):
+                    print(f"  [{market.upper()}] Ordem confirmada antes do limit (trade recente).", flush=True)
+                    _last_bet_window_by_market[market] = window_ts
+                    return True
                 ok = place_limit_order(client, token_id, bet_size)
+                if not ok and _poly_has_recent_trade(client, token_id):
+                    print(f"  [{market.upper()}] Ordem confirmada após limit (trade recente).", flush=True)
+                    _last_bet_window_by_market[market] = window_ts
+                    return True
     except Exception as e:
         if "Request exception" in str(e):
-            print(f"  [{market.upper()}] Erro de requisição na ordem; evitando novas tentativas nesta janela.", flush=True)
-            _last_bet_window_by_market[market] = window_ts
+            if _poly_has_recent_trade(client, token_id):
+                print(f"  [{market.upper()}] Ordem confirmada após erro de rede (trade recente).", flush=True)
+                _last_bet_window_by_market[market] = window_ts
+                return True
+            print(f"  [{market.upper()}] Erro de requisição; sem trade recente, continuando até o fim da janela.", flush=True)
             return False
         raise
 
@@ -2017,7 +2084,7 @@ def main():
                 print("90-95 exige valor. Use --bet-90-95 5.0 ou BET_90_95 no env.", flush=True, file=sys.stderr)
                 sys.exit(1)
 
-    if config.mode in ("safe", "spike_ai", "moon"):
+    if config.mode in ("safe", "spike_ai", "moon", "multi_confirm"):
         if args.safe_bet is not None:
             v = args.safe_bet
             if v < config.min_bet:
@@ -2027,7 +2094,7 @@ def main():
         elif sys.stdin.isatty() and sys.stderr.isatty():
             while True:
                 try:
-                    label = "Modo safe" if config.mode == "safe" else ("Modo SPIKE AI" if config.mode == "spike_ai" else "Modo MOON")
+                    label = "Modo safe" if config.mode == "safe" else ("Modo SPIKE AI" if config.mode == "spike_ai" else ("Modo MOON" if config.mode == "moon" else "Modo MC+RD"))
                     print(f"{label}: valor fixo em USD [min ${config.min_bet:.2f}]: ", end="", flush=True, file=sys.stderr)
                     s = input().strip()
                     if not s:
