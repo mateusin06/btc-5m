@@ -1605,6 +1605,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
 
     if not fired or not trade_direction:
         print(f"  [{market.upper()}] Sem sinal válido, pulando janela.", flush=True)
+        _last_bet_window_by_market[market] = window_ts
         return False
 
     if config.signals_only:
