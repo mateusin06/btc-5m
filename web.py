@@ -1460,9 +1460,10 @@ def _best_ev_outcome_for_market(market: dict, forecast: tuple[float, float]) -> 
 def ev_clima_summary(user: dict = Depends(get_current_user)):
     tz = ZoneInfo("America/New_York")
     today_et = datetime.now(tz=tz)
+    target_date = today_et + timedelta(days=1)
     items = []
     for city in CLIMA_CITIES:
-        slug = _build_clima_slug(city["slug"], today_et)
+        slug = _build_clima_slug(city["slug"], target_date)
         event = _get_event_by_slug_gamma(slug)
         if not event:
             items.append({"city": city["name"], "slug": slug, "status": "not_found"})
