@@ -89,6 +89,7 @@
     <nav class="flex gap-6 border-b border-[#2d333b] mb-8">
       <button type="button" data-tab="config" class="tab pb-3 px-1 text-gray-400 hover:text-white tab-active">Config & API</button>
       <button type="button" data-tab="bot" class="tab pb-3 px-1 text-gray-400 hover:text-white">Iniciar bot</button>
+      <button type="button" data-tab="clima" class="tab pb-3 px-1 text-gray-400 hover:text-white">EV+ Clima</button>
       <button type="button" data-tab="admin" id="tab-admin" class="tab pb-3 px-1 text-gray-400 hover:text-white hidden">Admin</button>
     </nav>
 
@@ -427,6 +428,24 @@
       </div>
     </section>
 
+    <!-- Tab: EV+ Clima -->
+    <section id="section-clima" class="hidden space-y-6">
+      <div class="bg-panel rounded-xl border border-border p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-lg font-semibold text-white">EV+ Clima</h2>
+            <p class="text-sm text-muted">Atualiza automaticamente a cada 5 minutos.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-gray-400">Aposta (USD)</label>
+            <input type="number" id="clima-bet-amount" step="0.01" min="0" class="w-24 bg-[#0f1116] border border-border rounded-lg px-2 py-1 text-sm" />
+          </div>
+        </div>
+        <div id="clima-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        <p id="clima-status" class="text-sm text-muted mt-3"></p>
+      </div>
+    </section>
+
     </section>
   </div>
   <!-- fim dashboard -->
@@ -567,7 +586,7 @@
     });
 
     function showSection(name) {
-      ['config','bot','admin'].forEach(t => {
+      ['config','bot','clima','admin'].forEach(t => {
         const s = getEl('section-' + t);
         if (s) s.classList.toggle('hidden', t !== name);
       });
@@ -578,6 +597,7 @@
         el.classList.toggle('text-white', isActive);
       });
       if (name === 'bot' && typeof refreshBotLogs === 'function') refreshBotLogs();
+      if (name === 'clima' && typeof loadEvClima === 'function') loadEvClima();
       if (name === 'admin' && typeof loadAdminUsers === 'function') loadAdminUsers();
     }
 
@@ -713,6 +733,10 @@
         if (c.arbitragem_pct != null) getEl('cfg-arbitragem-pct').value = c.arbitragem_pct;
         if (c.safe_bet != null) getEl('bot-safe-bet').value = c.safe_bet;
         if (c.arbitragem_pct != null) getEl('bot-arbitragem-pct').value = c.arbitragem_pct;
+        const climaBet = getEl('clima-bet-amount');
+        if (climaBet) {
+          climaBet.value = (c.safe_bet != null ? c.safe_bet : (c.min_bet ?? 5));
+        }
         if (c.has_kalshi_api_creds === undefined) {
           getEl('kalshi-status').textContent = 'API Kalshi indisponível (backend desatualizado).';
         } else {
@@ -966,6 +990,84 @@
     }
     botMode.addEventListener('change', updateBotModeUi);
     updateBotModeUi();
+
+    // --- EV+ Clima
+    async function loadEvClima() {
+      const grid = getEl('clima-grid');
+      const status = getEl('clima-status');
+      if (!grid || !status) return;
+      status.textContent = 'Carregando...';
+      try {
+        const r = await fetch(API + '/api/ev-clima/summary', { headers: authHeaders() });
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+        const items = data.items || [];
+        if (!items.length) {
+          grid.innerHTML = '';
+          status.textContent = 'Nenhum dado de clima disponível.';
+          return;
+        }
+        grid.innerHTML = items.map(item => {
+          if (item.status !== 'ok') {
+            return `
+              <div class="border border-border rounded-lg p-4 bg-[#0f1116]">
+                <div class="text-sm text-gray-300 font-medium mb-1">${item.city}</div>
+                <div class="text-xs text-muted">Indisponível (${item.status})</div>
+              </div>
+            `;
+          }
+          return `
+            <div class="border border-border rounded-lg p-4 bg-[#0f1116]">
+              <div class="text-sm text-gray-300 font-medium mb-1">${item.city}</div>
+              <div class="text-xs text-muted mb-2">${item.outcome}</div>
+              <div class="text-xs text-gray-400 mb-2">Preço: ${Number(item.price).toFixed(2)} | EV+: ${(Number(item.ev) * 100).toFixed(1)}%</div>
+              <div class="text-xs text-muted mb-3">${item.explanation}</div>
+              <div class="flex items-center gap-2">
+                <button type="button" class="btn-ev-buy px-3 py-1.5 text-sm bg-accent text-black rounded" data-token="${item.token_id || ''}">Comprar</button>
+                <a href="${item.link}" target="_blank" rel="noopener" class="text-xs text-accent hover:underline">Abrir mercado</a>
+              </div>
+            </div>
+          `;
+        }).join('');
+        status.textContent = `Atualizado em ${new Date(data.updated_at).toLocaleString('pt-BR')}`;
+        document.querySelectorAll('.btn-ev-buy').forEach(btn => {
+          btn.addEventListener('click', () => buyEvClima(btn.dataset.token || ''));
+        });
+      } catch (e) {
+        status.textContent = 'Erro ao carregar clima: ' + e.message;
+      }
+    }
+
+    async function buyEvClima(tokenId) {
+      if (!tokenId) {
+        alert('Token não disponível para compra.');
+        return;
+      }
+      const amountInput = getEl('clima-bet-amount');
+      const amount = amountInput ? parseFloat(amountInput.value) : NaN;
+      const body = { token_id: tokenId };
+      if (!isNaN(amount) && amount > 0) body.amount = amount;
+      try {
+        const r = await fetch(API + '/api/ev-clima/buy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify(body)
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || r.statusText);
+        alert(data.ok ? 'Ordem enviada.' : 'Falha ao enviar ordem.');
+      } catch (e) {
+        alert('Erro: ' + e.message);
+      }
+    }
+
+    // Auto-refresh clima a cada 5 minutos
+    setInterval(() => {
+      const climaSection = getEl('section-clima');
+      if (climaSection && !climaSection.classList.contains('hidden')) {
+        loadEvClima();
+      }
+    }, 5 * 60 * 1000);
 
     // --- Bot status
     async function refreshBotStatus() {

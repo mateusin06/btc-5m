@@ -7,6 +7,9 @@ Requer login; config e trades são por usuário.
 
 import json
 import os
+import json
+import math
+from zoneinfo import ZoneInfo
 import re
 import subprocess
 import sys
@@ -44,6 +47,25 @@ SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 
 if not SUPABASE_URL or not SUPABASE_ANON_KEY:
     raise RuntimeError("SUPABASE_URL e SUPABASE_ANON_KEY devem ser definidos no ambiente.")
+
+GAMMA_MARKETS = "https://gamma-api.polymarket.com/markets"
+OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
+
+CLIMA_CITIES = [
+    {"name": "London", "slug": "london", "lat": 51.5072, "lon": -0.1276},
+    {"name": "Buenos Aires", "slug": "buenos-aires", "lat": -34.6037, "lon": -58.3816},
+    {"name": "NYC", "slug": "new-york-city", "lat": 40.7128, "lon": -74.0060},
+    {"name": "Chicago", "slug": "chicago", "lat": 41.8781, "lon": -87.6298},
+    {"name": "Paris", "slug": "paris", "lat": 48.8566, "lon": 2.3522},
+    {"name": "Toronto", "slug": "toronto", "lat": 43.6532, "lon": -79.3832},
+    {"name": "Miami", "slug": "miami", "lat": 25.7617, "lon": -80.1918},
+    {"name": "Atlanta", "slug": "atlanta", "lat": 33.7490, "lon": -84.3880},
+    {"name": "Seattle", "slug": "seattle", "lat": 47.6062, "lon": -122.3321},
+    {"name": "Sao Paulo", "slug": "sao-paulo", "lat": -23.5558, "lon": -46.6396},
+    {"name": "Seoul", "slug": "seoul", "lat": 37.5665, "lon": 126.9780},
+    {"name": "Wellington", "slug": "wellington", "lat": -41.2865, "lon": 174.7762},
+    {"name": "Ankara", "slug": "ankara", "lat": 39.9334, "lon": 32.8597},
+]
 PAYMENT_WALLET = "0x17Ddf5d22fCF360E8D0dAED4e83717aeb1d47836"
 
 CLOB_HOST = "https://clob.polymarket.com"
@@ -1264,6 +1286,234 @@ def claim_run_now(user: dict = Depends(get_current_user)):
         )
     result = run_claim(private_key=key, funder_address=funder, signature_type=sig_type)
     return result
+
+
+def _build_clima_slug(city_slug: str, date_et: datetime) -> str:
+    month = date_et.strftime("%B").lower()
+    day = str(int(date_et.strftime("%d")))
+    year = date_et.strftime("%Y")
+    return f"highest-temperature-in-{city_slug}-on-{month}-{day}-{year}"
+
+
+def _get_market_by_slug_gamma(slug: str) -> Optional[dict]:
+    try:
+        r = requests.get(GAMMA_MARKETS, params={"slug": slug}, timeout=10)
+        if not r.ok:
+            return None
+        data = r.json()
+        if isinstance(data, list):
+            return data[0] if data else None
+        if isinstance(data, dict) and data.get("slug"):
+            return data
+        return None
+    except Exception:
+        return None
+
+
+def _parse_outcomes(market: dict) -> tuple[list[str], list[float], list[str]]:
+    outcomes_raw = market.get("outcomes")
+    prices_raw = market.get("outcomePrices") or market.get("outcome_prices")
+    token_ids_raw = market.get("clobTokenIds")
+    if isinstance(outcomes_raw, str):
+        outcomes = json.loads(outcomes_raw)
+    else:
+        outcomes = outcomes_raw or []
+    if isinstance(prices_raw, str):
+        prices = [float(p) for p in json.loads(prices_raw)]
+    else:
+        prices = [float(p) for p in (prices_raw or [])]
+    if isinstance(token_ids_raw, str):
+        token_ids = json.loads(token_ids_raw)
+    else:
+        token_ids = token_ids_raw or []
+    return outcomes, prices, token_ids
+
+
+def _detect_unit(outcomes: list[str], title: str) -> str:
+    text = " ".join(outcomes) + " " + (title or "")
+    if "°F" in text or ("F" in text and "°C" not in text):
+        return "fahrenheit"
+    if "°C" in text or "C" in text:
+        return "celsius"
+    return "celsius"
+
+
+def _parse_range(text: str) -> tuple[Optional[float], Optional[float]]:
+    t = text.replace("°", "").replace("º", "").lower()
+    nums = []
+    for part in t.replace("to", "-").replace("–", "-").split("-"):
+        try:
+            nums.append(float(part.strip().split()[0]))
+        except Exception:
+            pass
+    if "or higher" in t or "+" in t or ">=" in t or "at least" in t:
+        return (nums[0] if nums else None, None)
+    if "or lower" in t or "<=" in t or "at most" in t:
+        return (None, nums[0] if nums else None)
+    if len(nums) >= 2:
+        return (nums[0], nums[1])
+    if len(nums) == 1:
+        return (nums[0], nums[0])
+    return (None, None)
+
+
+def _norm_cdf(x: float, mu: float, sigma: float) -> float:
+    if sigma <= 0:
+        return 0.5
+    z = (x - mu) / (sigma * math.sqrt(2))
+    return 0.5 * (1 + math.erf(z))
+
+
+def _forecast_max_and_sigma(city: dict, unit: str) -> Optional[tuple[float, float]]:
+    try:
+        params = {
+            "latitude": city["lat"],
+            "longitude": city["lon"],
+            "hourly": "temperature_2m",
+            "timezone": "auto",
+            "temperature_unit": "fahrenheit" if unit == "fahrenheit" else "celsius",
+        }
+        r = requests.get(OPEN_METEO, params=params, timeout=10)
+        if not r.ok:
+            return None
+        data = r.json()
+        temps = data.get("hourly", {}).get("temperature_2m") or []
+        if not temps:
+            return None
+        max_temp = max(temps)
+        mean = sum(temps) / len(temps)
+        variance = sum((t - mean) ** 2 for t in temps) / max(1, len(temps))
+        sigma = math.sqrt(variance)
+        sigma = max(1.0, sigma)
+        return max_temp, sigma
+    except Exception:
+        return None
+
+
+def _best_ev_outcome(outcomes: list[str], prices: list[float], token_ids: list[str], forecast: tuple[float, float]) -> Optional[dict]:
+    max_temp, sigma = forecast
+    best = None
+    for i, outcome in enumerate(outcomes):
+        if i >= len(prices):
+            continue
+        price = prices[i]
+        low, high = _parse_range(outcome)
+        if low is None and high is None:
+            continue
+        if low is None:
+            prob = _norm_cdf(high, max_temp, sigma)
+        elif high is None:
+            prob = 1.0 - _norm_cdf(low, max_temp, sigma)
+        else:
+            prob = max(0.0, _norm_cdf(high, max_temp, sigma) - _norm_cdf(low, max_temp, sigma))
+        ev = prob - price
+        item = {
+            "outcome": outcome,
+            "price": price,
+            "prob": prob,
+            "ev": ev,
+            "token_id": token_ids[i] if i < len(token_ids) else None,
+            "max_temp": max_temp,
+            "sigma": sigma,
+        }
+        if best is None or ev > best["ev"]:
+            best = item
+    return best
+
+
+@app.get("/api/ev-clima/summary")
+def ev_clima_summary(user: dict = Depends(get_current_user)):
+    tz = ZoneInfo("America/New_York")
+    today_et = datetime.now(tz=tz)
+    items = []
+    for city in CLIMA_CITIES:
+        slug = _build_clima_slug(city["slug"], today_et)
+        market = _get_market_by_slug_gamma(slug)
+        if not market:
+            items.append({"city": city["name"], "slug": slug, "status": "not_found"})
+            continue
+        outcomes, prices, token_ids = _parse_outcomes(market)
+        unit = _detect_unit(outcomes, market.get("question") or market.get("title") or "")
+        forecast = _forecast_max_and_sigma(city, unit)
+        if not forecast:
+            items.append({"city": city["name"], "slug": slug, "status": "no_forecast"})
+            continue
+        best = _best_ev_outcome(outcomes, prices, token_ids, forecast)
+        if not best:
+            items.append({"city": city["name"], "slug": slug, "status": "no_ev"})
+            continue
+        explanation = (
+            f"Max forecast {best['max_temp']:.1f} ({unit}) | sigma {best['sigma']:.1f} | "
+            f"prob {best['prob']*100:.1f}% | EV {best['ev']*100:.1f}%"
+        )
+        items.append({
+            "city": city["name"],
+            "slug": slug,
+            "status": "ok",
+            "outcome": best["outcome"],
+            "price": best["price"],
+            "prob": best["prob"],
+            "ev": best["ev"],
+            "token_id": best["token_id"],
+            "explanation": explanation,
+            "link": f"https://polymarket.com/market/{slug}",
+        })
+    return {"items": items, "updated_at": datetime.now(timezone.utc).isoformat()}
+
+
+class EvClimaBuyRequest(BaseModel):
+    token_id: str
+    amount: Optional[float] = None
+
+
+@app.post("/api/ev-clima/buy")
+def ev_clima_buy(req: EvClimaBuyRequest, user: dict = Depends(get_current_user)):
+    row = _config_from_supabase(user["id"], user["_token"])
+    if not row:
+        raise HTTPException(status_code=400, detail="Config não encontrada.")
+    key = (row.get("private_key") or "").strip()
+    if not key or key == "0x...":
+        raise HTTPException(status_code=400, detail="Salve a chave privada na Config primeiro.")
+    api_key = (row.get("api_key") or "").strip()
+    api_secret = (row.get("api_secret") or "").strip()
+    api_passphrase = (row.get("api_passphrase") or "").strip()
+    if not api_key or not api_secret or not api_passphrase:
+        raise HTTPException(status_code=400, detail="Salve as credenciais API da Polymarket na Config.")
+
+    from py_clob_client.client import ClobClient
+    from py_clob_client.clob_types import MarketOrderArgs, OrderType
+    from py_clob_client.order_builder.constants import BUY
+
+    sig_type = int(row.get("signature_type") or 0)
+    funder = (row.get("funder_address") or "").strip()
+    client = ClobClient(
+        CLOB_HOST,
+        chain_id=CHAIN_ID,
+        key=key,
+        signature_type=sig_type,
+        funder=funder or None,
+    )
+    client.set_api_creds(api_key, api_secret, api_passphrase)
+
+    min_bet = float(row.get("min_bet", 5))
+    safe_bet = row.get("safe_bet")
+    amount = float(req.amount) if req.amount is not None else (float(safe_bet) if safe_bet else min_bet)
+    amount = max(amount, min_bet)
+
+    mo = MarketOrderArgs(
+        token_id=req.token_id,
+        amount=amount,
+        side=BUY,
+        price=float(row.get("max_token_price", 0.95)),
+        order_type=OrderType.FOK,
+    )
+    try:
+        signed = client.create_market_order(mo)
+        resp = client.post_order(signed, OrderType.FOK)
+        ok = resp.get("status") in ("matched", "live")
+        return {"ok": ok, "status": resp.get("status")}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Falha ao enviar ordem: {e!s}")
 
 
 @app.get("/api/admin/users")
