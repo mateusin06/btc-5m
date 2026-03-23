@@ -1408,14 +1408,29 @@ def _forecast_meteostat(city: dict, unit: str, target_date: datetime) -> Optiona
         return None
     try:
         day = target_date.date()
+        today = datetime.now(timezone.utc).date()
         point = Point(city["lat"], city["lon"])
-        data = Daily(point, day, day).fetch()
-        if data is None or data.empty:
-            return None
-        row = data.iloc[0]
-        tmax = row.get("tmax")
-        tmin = row.get("tmin")
-        tavg = row.get("tavg")
+        if day > today:
+            # Meteostat nÃ£o fornece forecast futuro; usamos mÃ©dia histÃ³rica do mesmo dia (Ãºltimos 10 anos)
+            start = day.replace(year=day.year - 10)
+            end = day.replace(year=day.year - 1)
+            data = Daily(point, start, end).fetch()
+            if data is None or data.empty:
+                return None
+            data = data[(data.index.month == day.month) & (data.index.day == day.day)]
+            if data.empty:
+                return None
+            tmax = data["tmax"].dropna().mean()
+            tmin = data["tmin"].dropna().mean()
+            tavg = data["tavg"].dropna().mean()
+        else:
+            data = Daily(point, day, day).fetch()
+            if data is None or data.empty:
+                return None
+            row = data.iloc[0]
+            tmax = row.get("tmax")
+            tmin = row.get("tmin")
+            tavg = row.get("tavg")
         if tmax is None or math.isnan(tmax):
             tmax = tavg
         if tmax is None or math.isnan(tmax):
