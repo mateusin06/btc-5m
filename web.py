@@ -39,7 +39,7 @@ ENV_FILE = PROJECT_ROOT / ".env"  # Não usado para leitura/escrita; config é p
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "").strip()
-ADMIN_EMAIL = "malagueta.canal@gmail.com"
+ADMIN_EMAIL = "acnovogc@gmail.com"
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
 
 if not SUPABASE_URL or not SUPABASE_ANON_KEY:

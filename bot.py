@@ -1779,8 +1779,22 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         print(f"  [{market.upper()}] MOON: preço do token indisponível, pulando.", flush=True)
         return False
     if real_price is not None and real_price > MAX_TOKEN_PRICE and active_mode != "arbitragem":
-        print(f"  [{market.upper()}] Token @ ${real_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
-        return False
+        print(
+            f"  [{market.upper()}] Token @ ${real_price:.2f} > 90c, aguardando cair até ${MAX_TOKEN_PRICE:.2f} (até o fim da janela).",
+            flush=True,
+        )
+        # Aguarda preço voltar dentro do limite até o fechamento
+        while int(time.time()) < close_time:
+            time.sleep(ORDER_RETRY_INTERVAL)
+            real_price = get_token_price(token_id, "BUY")
+            if real_price is None and event:
+                from api import get_token_price_from_event
+                real_price = get_token_price_from_event(event, trade_direction)
+            if real_price is not None and real_price <= MAX_TOKEN_PRICE:
+                break
+        if real_price is None or real_price > MAX_TOKEN_PRICE:
+            print(f"  [{market.upper()}] Token continuou > ${MAX_TOKEN_PRICE:.2f} até o fim da janela, pulando.", flush=True)
+            return False
     if active_mode == "moon" and real_price is not None and real_price < MOON_MIN_ODD:
         print(f"  [{market.upper()}] MOON: Token @ ${real_price:.2f} < ${MOON_MIN_ODD:.2f}, pulando.", flush=True)
         return False
