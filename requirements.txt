@@ -1,7 +1,6 @@
 py-clob-client>=0.34.5
 python-dotenv>=1.0.0
 requests>=2.31.0
-meteostat>=1.6.7
 cryptography>=42.0.0
 web3>=6.0.0
 playwright>=1.40.0  # opcional: só para auto_claim.py (claim via browser)
