@@ -49,12 +49,13 @@ if not SUPABASE_URL or not SUPABASE_ANON_KEY:
     raise RuntimeError("SUPABASE_URL e SUPABASE_ANON_KEY devem ser definidos no ambiente.")
 
 GAMMA_MARKETS = "https://gamma-api.polymarket.com/markets"
+GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
 
 CLIMA_CITIES = [
     {"name": "London", "slug": "london", "lat": 51.5072, "lon": -0.1276},
     {"name": "Buenos Aires", "slug": "buenos-aires", "lat": -34.6037, "lon": -58.3816},
-    {"name": "NYC", "slug": "new-york-city", "lat": 40.7128, "lon": -74.0060},
+    {"name": "NYC", "slug": "nyc", "lat": 40.7128, "lon": -74.0060},
     {"name": "Chicago", "slug": "chicago", "lat": 41.8781, "lon": -87.6298},
     {"name": "Paris", "slug": "paris", "lat": 48.8566, "lon": 2.3522},
     {"name": "Toronto", "slug": "toronto", "lat": 43.6532, "lon": -79.3832},
@@ -1295,9 +1296,9 @@ def _build_clima_slug(city_slug: str, date_et: datetime) -> str:
     return f"highest-temperature-in-{city_slug}-on-{month}-{day}-{year}"
 
 
-def _get_market_by_slug_gamma(slug: str) -> Optional[dict]:
+def _get_event_by_slug_gamma(slug: str) -> Optional[dict]:
     try:
-        r = requests.get(GAMMA_MARKETS, params={"slug": slug}, timeout=10)
+        r = requests.get(GAMMA_EVENTS, params={"slug": slug}, timeout=10)
         if not r.ok:
             return None
         data = r.json()
@@ -1329,11 +1330,11 @@ def _parse_outcomes(market: dict) -> tuple[list[str], list[float], list[str]]:
     return outcomes, prices, token_ids
 
 
-def _detect_unit(outcomes: list[str], title: str) -> str:
-    text = " ".join(outcomes) + " " + (title or "")
-    if "°F" in text or ("F" in text and "°C" not in text):
+def _detect_unit(texts: list[str], title: str) -> str:
+    text = " ".join([t for t in texts if t]) + " " + (title or "")
+    if "°F" in text:
         return "fahrenheit"
-    if "°C" in text or "C" in text:
+    if "°C" in text:
         return "celsius"
     return "celsius"
 
@@ -1342,8 +1343,10 @@ def _parse_range(text: str) -> tuple[Optional[float], Optional[float]]:
     t = text.replace("°", "").replace("º", "").lower()
     nums = []
     for part in t.replace("to", "-").replace("–", "-").split("-"):
+        raw = part.strip().split()[0] if part.strip() else ""
+        cleaned = re.sub(r"[^0-9.+-]", "", raw)
         try:
-            nums.append(float(part.strip().split()[0]))
+            nums.append(float(cleaned))
         except Exception:
             pass
     if "or higher" in t or "+" in t or ">=" in t or "at least" in t:
@@ -1390,35 +1393,67 @@ def _forecast_max_and_sigma(city: dict, unit: str) -> Optional[tuple[float, floa
         return None
 
 
-def _best_ev_outcome(outcomes: list[str], prices: list[float], token_ids: list[str], forecast: tuple[float, float]) -> Optional[dict]:
+def _range_prob(low: Optional[float], high: Optional[float], max_temp: float, sigma: float) -> float:
+    if low is not None and high is not None and low == high:
+        low = low - 0.5
+        high = high + 0.5
+    if low is None and high is None:
+        return 0.0
+    if low is None:
+        return _norm_cdf(high, max_temp, sigma)
+    if high is None:
+        return 1.0 - _norm_cdf(low, max_temp, sigma)
+    return max(0.0, _norm_cdf(high, max_temp, sigma) - _norm_cdf(low, max_temp, sigma))
+
+
+def _best_ev_outcome_for_market(market: dict, forecast: tuple[float, float]) -> Optional[dict]:
     max_temp, sigma = forecast
-    best = None
-    for i, outcome in enumerate(outcomes):
-        if i >= len(prices):
-            continue
-        price = prices[i]
-        low, high = _parse_range(outcome)
-        if low is None and high is None:
-            continue
-        if low is None:
-            prob = _norm_cdf(high, max_temp, sigma)
-        elif high is None:
-            prob = 1.0 - _norm_cdf(low, max_temp, sigma)
-        else:
-            prob = max(0.0, _norm_cdf(high, max_temp, sigma) - _norm_cdf(low, max_temp, sigma))
-        ev = prob - price
-        item = {
-            "outcome": outcome,
-            "price": price,
-            "prob": prob,
-            "ev": ev,
-            "token_id": token_ids[i] if i < len(token_ids) else None,
+    outcomes, prices, token_ids = _parse_outcomes(market)
+    if len(outcomes) < 2 or len(prices) < 2:
+        return None
+    title = market.get("groupItemTitle") or market.get("question") or ""
+    low, high = _parse_range(title)
+    if low is None and high is None:
+        return None
+    prob_yes = _range_prob(low, high, max_temp, sigma)
+    prob_no = 1.0 - prob_yes
+    try:
+        yes_idx = outcomes.index("Yes")
+    except ValueError:
+        yes_idx = 0
+    try:
+        no_idx = outcomes.index("No")
+    except ValueError:
+        no_idx = 1 if len(outcomes) > 1 else 0
+
+    candidates = []
+    if yes_idx < len(prices) and yes_idx < len(token_ids):
+        yes_price = float(prices[yes_idx])
+        candidates.append({
+            "outcome": f"YES — {title}",
+            "price": yes_price,
+            "prob": prob_yes,
+            "ev": prob_yes - yes_price,
+            "token_id": token_ids[yes_idx],
+            "market_slug": market.get("slug"),
             "max_temp": max_temp,
             "sigma": sigma,
-        }
-        if best is None or ev > best["ev"]:
-            best = item
-    return best
+        })
+    if no_idx < len(prices) and no_idx < len(token_ids):
+        no_price = float(prices[no_idx])
+        candidates.append({
+            "outcome": f"NO — {title}",
+            "price": no_price,
+            "prob": prob_no,
+            "ev": prob_no - no_price,
+            "token_id": token_ids[no_idx],
+            "market_slug": market.get("slug"),
+            "max_temp": max_temp,
+            "sigma": sigma,
+        })
+    if not candidates:
+        return None
+    return max(candidates, key=lambda x: x["ev"])
 
 
 @app.get("/api/ev-clima/summary")
@@ -1428,17 +1463,25 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
     items = []
     for city in CLIMA_CITIES:
         slug = _build_clima_slug(city["slug"], today_et)
-        market = _get_market_by_slug_gamma(slug)
-        if not market:
+        event = _get_event_by_slug_gamma(slug)
+        if not event:
             items.append({"city": city["name"], "slug": slug, "status": "not_found"})
             continue
-        outcomes, prices, token_ids = _parse_outcomes(market)
-        unit = _detect_unit(outcomes, market.get("question") or market.get("title") or "")
+        markets = event.get("markets") or []
+        if not markets:
+            items.append({"city": city["name"], "slug": slug, "status": "no_markets"})
+            continue
+        unit_texts = [(m.get("groupItemTitle") or m.get("question") or "") for m in markets]
+        unit = _detect_unit(unit_texts, event.get("title") or "")
         forecast = _forecast_max_and_sigma(city, unit)
         if not forecast:
             items.append({"city": city["name"], "slug": slug, "status": "no_forecast"})
             continue
-        best = _best_ev_outcome(outcomes, prices, token_ids, forecast)
+        best = None
+        for m in markets:
+            candidate = _best_ev_outcome_for_market(m, forecast)
+            if candidate and (best is None or candidate["ev"] > best["ev"]):
+                best = candidate
         if not best:
             items.append({"city": city["name"], "slug": slug, "status": "no_ev"})
             continue
@@ -1456,7 +1499,7 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
             "ev": best["ev"],
             "token_id": best["token_id"],
             "explanation": explanation,
-            "link": f"https://polymarket.com/market/{slug}",
+            "link": f"https://polymarket.com/market/{best['market_slug']}",
         })
     return {"items": items, "updated_at": datetime.now(timezone.utc).isoformat()}
 
