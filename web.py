@@ -53,6 +53,8 @@ GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
 GAMMA_SPORTS = "https://gamma-api.polymarket.com/sports"
 GAMMA_SERIES = "https://gamma-api.polymarket.com/series"
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
+METEOBLUE_BASIC_DAY = "https://my.meteoblue.com/packages/basic-day"
+METEOBLUE_API_KEY = os.getenv("METEOBLUE_API_KEY", "").strip() or "EinsFhSxjCfcHkOL"
 ODDS_API_IO_BASE = "https://api.odds-api.io/v3"
 ODDS_API_IO_KEY = os.getenv("ODDS_API_IO_KEY", "").strip() or "8c3630af6548549eb8adeedf672ff9b80eea2e20b362ef4f4e1782e2c115e949"
 ODDS_API_IO_BOOKMAKERS = os.getenv("ODDS_API_IO_BOOKMAKERS", "").strip() or "Bet365,DraftKings"
@@ -98,6 +100,7 @@ _autoclaim_log_handles: dict[str, list] = {}
 _gamma_cache: dict[str, tuple[float, Any]] = {}
 _odds_cache: dict[str, tuple[float, Any]] = {}
 _ev_esportes_cache: dict[str, tuple[float, Any]] = {}
+_ev_clima_cache: dict[str, tuple[float, Any]] = {}
 
 
 def _writable_log_dir() -> Path:
@@ -1445,7 +1448,7 @@ def _norm_cdf(x: float, mu: float, sigma: float) -> float:
     return 0.5 * (1 + math.erf(z))
 
 
-def _forecast_max_and_sigma(city: dict, unit: str, target_date: datetime) -> Optional[tuple[float, float]]:
+def _forecast_openmeteo(city: dict, unit: str, target_date: datetime) -> Optional[tuple[float, float]]:
     try:
         date_str = target_date.strftime("%Y-%m-%d")
         params = {
@@ -1477,6 +1480,70 @@ def _forecast_max_and_sigma(city: dict, unit: str, target_date: datetime) -> Opt
         return max_temp, sigma
     except Exception:
         return None
+
+
+def _forecast_meteoblue(city: dict, unit: str, target_date: datetime) -> Optional[tuple[float, float]]:
+    if not METEOBLUE_API_KEY:
+        return None
+    try:
+        date_str = target_date.strftime("%Y-%m-%d")
+        params = {
+            "apikey": METEOBLUE_API_KEY,
+            "lat": city["lat"],
+            "lon": city["lon"],
+            "asl": city.get("asl", 0),
+            "format": "json",
+        }
+        r = requests.get(METEOBLUE_BASIC_DAY, params=params, timeout=10)
+        if not r.ok:
+            return None
+        data = r.json()
+        day = data.get("data_day", {})
+        times = day.get("time") or []
+        tmax = day.get("temperature_max") or []
+        tmin = day.get("temperature_min") or []
+        tmean = day.get("temperature_mean") or []
+        if not times or not tmax:
+            return None
+        try:
+            idx = times.index(date_str)
+        except ValueError:
+            return None
+        max_temp = float(tmax[idx])
+        if unit == "fahrenheit":
+            max_temp = (max_temp * 9 / 5) + 32
+        min_temp = float(tmin[idx]) if idx < len(tmin) else None
+        mean_temp = float(tmean[idx]) if idx < len(tmean) else None
+        if unit == "fahrenheit":
+            if min_temp is not None:
+                min_temp = (min_temp * 9 / 5) + 32
+            if mean_temp is not None:
+                mean_temp = (mean_temp * 9 / 5) + 32
+        if min_temp is not None:
+            sigma = max(1.0, (max_temp - min_temp) / 4)
+        elif mean_temp is not None:
+            sigma = max(1.0, abs(max_temp - mean_temp) / 2)
+        else:
+            sigma = 1.5
+        return max_temp, sigma
+    except Exception:
+        return None
+
+
+def _forecast_max_and_sigma(city: dict, unit: str, target_date: datetime) -> Optional[tuple[float, float]]:
+    sources = []
+    om = _forecast_openmeteo(city, unit, target_date)
+    if om:
+        sources.append(om)
+    mb = _forecast_meteoblue(city, unit, target_date)
+    if mb:
+        sources.append(mb)
+    if not sources:
+        return None
+    max_avg = sum(s[0] for s in sources) / len(sources)
+    sigma_avg = sum(s[1] for s in sources) / len(sources)
+    sigma_avg = max(1.0, sigma_avg)
+    return max_avg, sigma_avg
 
 
 def _range_prob(low: Optional[float], high: Optional[float], max_temp: float, sigma: float) -> float:
@@ -1770,6 +1837,11 @@ def _pace_label(total_line: Optional[float], category: str) -> str:
 
 @app.get("/api/ev-clima/summary")
 def ev_clima_summary(user: dict = Depends(get_current_user)):
+    cached = _cache_get(_ev_clima_cache, "summary", 30 * 60)
+    if cached is not None:
+        cached = dict(cached)
+        cached["from_cache"] = True
+        return cached
     tz = ZoneInfo("America/New_York")
     today_et = datetime.now(tz=tz)
     target_date = today_et + timedelta(days=1)
@@ -1814,7 +1886,9 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
             "explanation": explanation,
             "link": f"https://polymarket.com/market/{best['market_slug']}",
         })
-    return {"items": items, "updated_at": datetime.now(timezone.utc).isoformat()}
+    payload = {"items": items, "updated_at": datetime.now(timezone.utc).isoformat()}
+    _cache_set(_ev_clima_cache, "summary", payload)
+    return payload
 
 
 def _gamma_sport_codes_by_category(category: str) -> list[str]:
