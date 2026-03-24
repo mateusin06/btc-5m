@@ -1566,6 +1566,21 @@ def _team_key(a: str, b: str) -> str:
     return " | ".join(sorted([na, nb]))
 
 
+def _team_tokens(name: str) -> list[str]:
+    norm = _normalize_team_name(name)
+    tokens = [t for t in norm.split() if t]
+    replace = {"utd": "united", "u": "united", "st": "saint"}
+    return [replace.get(t, t) for t in tokens]
+
+
+def _team_tokens_match(a: str, b: str) -> bool:
+    ta = set(_team_tokens(a))
+    tb = set(_team_tokens(b))
+    if not ta or not tb:
+        return False
+    return ta.issubset(tb) or tb.issubset(ta)
+
+
 def _parse_total_line(text: str) -> Optional[float]:
     if not text:
         return None
@@ -1784,7 +1799,7 @@ def _gamma_sport_codes_by_category(category: str) -> list[str]:
 def _gamma_upcoming_events_for_codes(codes: list[str], limit: int = 20) -> list[dict]:
     events: list[dict] = []
     now = datetime.now(timezone.utc)
-    max_date = now + timedelta(days=2)
+    max_date = now + timedelta(days=7)
     for code in codes:
         sport_entry = next((s for s in _gamma_get_sports() if s.get("sport") == code), None)
         if not sport_entry:
@@ -1845,7 +1860,18 @@ def _match_odds_event(index: dict[str, list[dict]], team_a: str, team_b: str, st
     key = _team_key(team_a, team_b)
     candidates = index.get(key, [])
     if not candidates:
-        return None
+        all_events: list[dict] = []
+        for lst in index.values():
+            all_events.extend(lst)
+        for ev in all_events:
+            home = ev.get("home") or ""
+            away = ev.get("away") or ""
+            if (_team_tokens_match(team_a, home) and _team_tokens_match(team_b, away)) or (
+                _team_tokens_match(team_a, away) and _team_tokens_match(team_b, home)
+            ):
+                candidates.append(ev)
+        if not candidates:
+            return None
     if not start_time:
         return candidates[0]
     try:
@@ -2022,8 +2048,6 @@ def ev_esportes_summary(user: dict = Depends(get_current_user)):
                         })
 
             bets = sorted(bets, key=lambda x: x["ev"], reverse=True)[:5]
-            if not bets:
-                continue
             games.append({
                 "title": title,
                 "slug": ev.get("slug"),
