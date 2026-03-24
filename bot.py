@@ -1382,6 +1382,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         # Modo Multi-Confirmacao + Regime + Divergencia
         if active_mode == "multi_confirm":
             from strategy import analyze_multi_confirm
+            from api import get_token_price as _get_tok, get_token_price_from_event as _get_ev
 
             candle_limit_ta = max(30, MIN_CANDLES_FOR_FULL_TA)
             candles = get_btc_candles_1m(limit=candle_limit_ta) if is_15m else get_candles_by_market(market, limit=candle_limit_ta)
@@ -1398,18 +1399,50 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
             if signal is None:
                 time.sleep(TA_POLL_INTERVAL)
                 continue
-            trade_direction = signal.direction
-            fired = True
-            final_result = None
-            print(
-                f"  [{market.upper()}] MC+RD: {signal.direction.upper()} | conf {signal.confidence:.0%} | {signal.reason}",
-                flush=True,
+            # EV+ gate: só compra quando tiver edge positivo
+            mc_result = analyze(window_open, float(current_price), candles, tick_prices[-20:] if tick_prices else None)
+            token_price = None
+            if tokens and len(tokens) >= 2 and event:
+                token_id = tokens[0] if signal.direction == "up" else tokens[1]
+                token_price = _get_tok(token_id, "BUY") or _get_ev(event, signal.direction)
+            p_win = None
+            if mc_result is not None:
+                p_up = getattr(mc_result, "estimated_p_up", 0.5)
+                p_win = p_up if signal.direction == "up" else (1 - p_up)
+            margin = _dynamic_ev_margin(mc_result)
+            ev_ok = (
+                token_price is not None
+                and p_win is not None
+                and p_win > token_price + margin
             )
-            _tg_send(
-                f"[{market.upper()}] MC+RD: {signal.direction.upper()} | conf {signal.confidence:.0%} | {signal.reason}\n"
-                f"https://polymarket.com/market/{slug}"
-            )
-            break
+            if ev_ok:
+                edge_pct = (p_win - token_price) * 100
+                trade_direction = signal.direction
+                fired = True
+                final_result = mc_result
+                print(
+                    f"  [{market.upper()}] MC+RD: {signal.direction.upper()} | conf {signal.confidence:.0%} | {signal.reason} (EV+ {edge_pct:.1f}%)",
+                    flush=True,
+                )
+                _tg_send(
+                    f"[{market.upper()}] MC+RD: {signal.direction.upper()} | conf {signal.confidence:.0%} | "
+                    f"{signal.reason} | EV+ {edge_pct:.1f}%\n"
+                    f"https://polymarket.com/market/{slug}"
+                )
+                break
+            if token_price is None or p_win is None:
+                print(
+                    f"  [{market.upper()}] MC+RD: {signal.direction.upper()} | conf {signal.confidence:.0%} | {signal.reason} (sem EV+, sem preço)",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"  [{market.upper()}] MC+RD: {signal.direction.upper()} | conf {signal.confidence:.0%} | "
+                    f"{signal.reason} (sem EV+, edge {(p_win - token_price) * 100:.1f}%)",
+                    flush=True,
+                )
+            time.sleep(TA_POLL_INTERVAL)
+            continue
 
         # Modo arbitragem: prioridade para arb pura a cada iteração (Up+Down < 1-margem)
         if active_mode == "arbitragem" and tokens and len(tokens) == 2 and event:
@@ -2167,7 +2200,7 @@ def main():
     if config.mode == "moon" and config.fixed_bet_safe is not None:
         print(f"MOON: estratégia CVD (divergência + momentum) com mão fixa safe | entrada fixa ${config.fixed_bet_safe:.2f}", flush=True)
     if config.mode == "multi_confirm":
-        print("MC+RD: Multi-Confirmacao + Regime + Divergencia | apenas sinais (sem ordens)", flush=True)
+        print("MC+RD: Multi-Confirmacao + Regime + Divergencia | entra apenas com EV+", flush=True)
     if config.mode == "only_hedge_plus":
         print(f"Only Hedge+: entrada fixa ${config.fixed_bet_only_hedge or config.min_bet:.2f} | só entra com EV+", flush=True)
     if config.mode == "odd_master":

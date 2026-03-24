@@ -53,6 +53,7 @@ GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
 GAMMA_SPORTS = "https://gamma-api.polymarket.com/sports"
 GAMMA_SERIES = "https://gamma-api.polymarket.com/series"
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_GEOCODE = "https://geocoding-api.open-meteo.com/v1/search"
 METEOBLUE_BASIC_DAY = "https://my.meteoblue.com/packages/basic-day"
 METEOBLUE_API_KEY = os.getenv("METEOBLUE_API_KEY", "").strip() or "EinsFhSxjCfcHkOL"
 ODDS_API_IO_BASE = "https://api.odds-api.io/v3"
@@ -73,6 +74,28 @@ CLIMA_CITIES = [
     {"name": "Seoul", "slug": "seoul", "lat": 37.5665, "lon": 126.9780},
     {"name": "Wellington", "slug": "wellington", "lat": -41.2865, "lon": 174.7762},
     {"name": "Ankara", "slug": "ankara", "lat": 39.9334, "lon": 32.8597},
+    {"name": "Dallas", "slug": "dallas"},
+    {"name": "Shanghai", "slug": "shanghai"},
+    {"name": "Hong Kong", "slug": "hong-kong"},
+    {"name": "Munich", "slug": "munich"},
+    {"name": "Madrid", "slug": "madrid"},
+    {"name": "Milan", "slug": "milan"},
+    {"name": "Chengdu", "slug": "chengdu"},
+    {"name": "Chongqing", "slug": "chongqing"},
+    {"name": "Tokyo", "slug": "tokyo"},
+    {"name": "Singapore", "slug": "singapore"},
+    {"name": "Lucknow", "slug": "lucknow"},
+    {"name": "Wuhan", "slug": "wuhan"},
+    {"name": "Warsaw", "slug": "warsaw"},
+    {"name": "Shenzhen", "slug": "shenzhen"},
+    {"name": "Beijing", "slug": "beijing"},
+    {"name": "Taipei", "slug": "taipei"},
+    {"name": "Denver", "slug": "denver"},
+    {"name": "Tel Aviv", "slug": "tel-aviv"},
+    {"name": "Los Angeles", "slug": "los-angeles"},
+    {"name": "San Francisco", "slug": "san-francisco"},
+    {"name": "Houston", "slug": "houston"},
+    {"name": "Austin", "slug": "austin"},
 ]
 PAYMENT_WALLET = "0x17Ddf5d22fCF360E8D0dAED4e83717aeb1d47836"
 
@@ -101,6 +124,7 @@ _gamma_cache: dict[str, tuple[float, Any]] = {}
 _odds_cache: dict[str, tuple[float, Any]] = {}
 _ev_esportes_cache: dict[str, tuple[float, Any]] = {}
 _ev_clima_cache: dict[str, tuple[float, Any]] = {}
+_geo_cache: dict[str, tuple[float, Any]] = {}
 
 
 def _writable_log_dir() -> Path:
@@ -245,24 +269,14 @@ def _config_to_supabase(user_id: str, token: str, data: dict, email: Optional[st
         payload["user_id"] = user_id
         if email is not None:
             payload["email"] = email
-        existing = _config_from_supabase(user_id, token)
-        if existing:
-            r = requests.patch(
-                f"{SUPABASE_URL}/rest/v1/user_config",
-                params={"user_id": f"eq.{user_id}"},
-                headers=_supabase_headers(token),
-                json=payload,
-                timeout=10,
-            )
-            r.raise_for_status()
-        else:
-            r = requests.post(
-                f"{SUPABASE_URL}/rest/v1/user_config",
-                headers=_supabase_headers(token),
-                json=payload,
-                timeout=10,
-            )
-            r.raise_for_status()
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/user_config",
+            params={"on_conflict": "user_id"},
+            headers={**_supabase_headers(token), "Prefer": "resolution=merge-duplicates"},
+            json=payload,
+            timeout=10,
+        )
+        r.raise_for_status()
     except requests.exceptions.HTTPError as e:
         raise HTTPException(status_code=500, detail="Erro ao salvar config. Tente novamente.")
 
@@ -301,23 +315,6 @@ def _parse_iso_date(s: Any) -> Optional[datetime]:
 
 def _ensure_trial_row(user_id: str, token: str, email: str) -> None:
     """Cria a linha em user_config com trial de 2 dias se ainda não existir."""
-    existing = _config_from_supabase(user_id, token)
-    if existing:
-        return
-    trial_end = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
-    try:
-        requests.post(
-            f"{SUPABASE_URL}/rest/v1/user_config",
-            headers={**_supabase_headers(token), "Content-Type": "application/json"},
-            json={"user_id": user_id, "email": email or "", "trial_ends_at": trial_end},
-            timeout=10,
-        )
-    except Exception:
-        pass
-
-
-def _ensure_trial_row(user_id: str, token: str, email: str) -> None:
-    """Cria a linha em user_config com trial de 2 dias se ainda nÃ£o existir."""
     trial_end = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
     try:
         requests.post(
@@ -369,30 +366,15 @@ def _admin_get_all_user_configs() -> list[dict]:
 
 def _admin_grant_days(user_id: str, add_days: int = 30) -> None:
     """Estende subscription_ends_at do usuário (usa service role)."""
-    r = requests.get(
-        f"{SUPABASE_URL}/rest/v1/user_config",
-        params={"user_id": f"eq.{user_id}", "select": "subscription_ends_at"},
+    r = requests.post(
+        f"{SUPABASE_URL}/rest/v1/rpc/grant_subscription_days",
         headers=_admin_headers(),
+        json={"p_user_id": user_id, "p_days": int(add_days)},
         timeout=10,
     )
-    r.raise_for_status()
-    rows = r.json() if r.json() else []
-    if not rows:
+    if r.status_code == 404:
         raise HTTPException(status_code=404, detail="Usuário não encontrado em user_config.")
-    now = datetime.now(timezone.utc)
-    current_end = _parse_iso_date(rows[0].get("subscription_ends_at"))
-    if current_end and current_end > now:
-        new_end = current_end + timedelta(days=add_days)
-    else:
-        new_end = now + timedelta(days=add_days)
-    patch_r = requests.patch(
-        f"{SUPABASE_URL}/rest/v1/user_config",
-        params={"user_id": f"eq.{user_id}"},
-        headers=_admin_headers(),
-        json={"subscription_ends_at": new_end.isoformat()},
-        timeout=10,
-    )
-    patch_r.raise_for_status()
+    r.raise_for_status()
 
 
 # --- Modelos ---
@@ -517,24 +499,6 @@ def _opt_float(env: dict[str, str], key: str) -> Optional[float]:
         return float(v)
     except (ValueError, TypeError):
         return None
-
-
-def _config_to_supabase(user_id: str, token: str, data: dict, email: Optional[str] = None) -> None:
-    try:
-        payload = {k: v for k, v in data.items() if v is not None}
-        payload["user_id"] = user_id
-        if email is not None:
-            payload["email"] = email
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/user_config",
-            params={"on_conflict": "user_id"},
-            headers={**_supabase_headers(token), "Prefer": "resolution=merge-duplicates"},
-            json=payload,
-            timeout=10,
-        )
-        r.raise_for_status()
-    except requests.exceptions.HTTPError as e:
-        raise HTTPException(status_code=500, detail="Erro ao salvar config. Tente novamente.")
 
 
 def _write_env(env: dict[str, str]) -> None:
@@ -1481,8 +1445,48 @@ def _norm_cdf(x: float, mu: float, sigma: float) -> float:
     return 0.5 * (1 + math.erf(z))
 
 
+def _resolve_city_coords(city: dict) -> Optional[dict]:
+    if city.get("lat") is not None and city.get("lon") is not None:
+        return city
+    key = (city.get("name") or city.get("slug") or "").strip().lower()
+    if not key:
+        return None
+    cached = _cache_get(_geo_cache, key, 30 * 24 * 3600)
+    if cached is not None:
+        city.update(cached)
+        return city
+    try:
+        r = requests.get(
+            OPEN_METEO_GEOCODE,
+            params={"name": city.get("name") or city.get("slug"), "count": 1, "language": "en", "format": "json"},
+            timeout=10,
+        )
+        if not r.ok:
+            return None
+        data = r.json() or {}
+        results = data.get("results") or []
+        if not results:
+            return None
+        res = results[0]
+        coords = {
+            "lat": res.get("latitude"),
+            "lon": res.get("longitude"),
+            "asl": res.get("elevation") or city.get("asl", 0),
+        }
+        if coords["lat"] is None or coords["lon"] is None:
+            return None
+        _cache_set(_geo_cache, key, coords)
+        city.update(coords)
+        return city
+    except Exception:
+        return None
+
+
 def _forecast_openmeteo(city: dict, unit: str, target_date: datetime) -> Optional[tuple[float, float]]:
     try:
+        city = _resolve_city_coords(city) or city
+        if city.get("lat") is None or city.get("lon") is None:
+            return None
         date_str = target_date.strftime("%Y-%m-%d")
         params = {
             "latitude": city["lat"],
@@ -1519,12 +1523,15 @@ def _forecast_meteoblue(city: dict, unit: str, target_date: datetime) -> Optiona
     if not METEOBLUE_API_KEY:
         return None
     try:
+        city = _resolve_city_coords(city) or city
+        if city.get("lat") is None or city.get("lon") is None:
+            return None
         date_str = target_date.strftime("%Y-%m-%d")
         params = {
             "apikey": METEOBLUE_API_KEY,
             "lat": city["lat"],
             "lon": city["lon"],
-            "asl": city.get("asl", 0),
+            "asl": city.get("asl", 0) or 0,
             "format": "json",
         }
         r = requests.get(METEOBLUE_BASIC_DAY, params=params, timeout=10)
