@@ -605,7 +605,7 @@
     });
 
     function showSection(name) {
-      ['config','bot','clima','admin'].forEach(t => {
+      ['config','bot','clima','esportes','admin'].forEach(t => {
         const s = getEl('section-' + t);
         if (s) s.classList.toggle('hidden', t !== name);
       });
