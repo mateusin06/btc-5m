@@ -1683,6 +1683,65 @@ def _odds_consensus_totals(odds_data: dict, line: float) -> Optional[dict]:
     return {"over": over, "under": under, "line": best_line}
 
 
+def _odds_consensus_spreads(odds_data: dict, line: float) -> Optional[dict]:
+    bookies = odds_data.get("bookmakers") if odds_data else None
+    if not bookies:
+        return None
+    home_probs = []
+    away_probs = []
+    for markets in bookies.values():
+        best = None
+        for m in markets:
+            if m.get("name") != "Spread":
+                continue
+            for o in m.get("odds", []):
+                try:
+                    hdp = float(o.get("hdp"))
+                except Exception:
+                    continue
+                diff = abs(abs(hdp) - abs(line))
+                if best is None or diff < best[0]:
+                    p_home = _odds_to_prob(o.get("home"))
+                    p_away = _odds_to_prob(o.get("away"))
+                    if p_home is None or p_away is None:
+                        continue
+                    best = (diff, p_home, p_away)
+            break
+        if best and best[0] <= 0.25:
+            home_probs.append(best[1])
+            away_probs.append(best[2])
+    if not home_probs and not away_probs:
+        return None
+    home = sum(home_probs) / len(home_probs) if home_probs else None
+    away = sum(away_probs) / len(away_probs) if away_probs else None
+    return {"home": home, "away": away}
+
+
+def _odds_consensus_btts(odds_data: dict) -> Optional[dict]:
+    bookies = odds_data.get("bookmakers") if odds_data else None
+    if not bookies:
+        return None
+    yes_probs = []
+    no_probs = []
+    for markets in bookies.values():
+        for m in markets:
+            if m.get("name") != "Both Teams To Score":
+                continue
+            for o in m.get("odds", []):
+                p_yes = _odds_to_prob(o.get("yes"))
+                p_no = _odds_to_prob(o.get("no"))
+                if p_yes is not None:
+                    yes_probs.append(p_yes)
+                if p_no is not None:
+                    no_probs.append(p_no)
+            break
+    if not yes_probs and not no_probs:
+        return None
+    yes = sum(yes_probs) / len(yes_probs) if yes_probs else None
+    no = sum(no_probs) / len(no_probs) if no_probs else None
+    return {"yes": yes, "no": no}
+
+
 def _ev_level(ev: float) -> str:
     if ev >= 0.08:
         return "grande"
@@ -1980,7 +2039,7 @@ def ev_esportes_summary(user: dict = Depends(get_current_user)):
                 if not outcomes or not prices:
                     continue
                 smt = market.get("sportsMarketType")
-                if smt == "moneyline":
+                if smt in ("moneyline", None):
                     probs = _odds_consensus_moneyline(odds_data)
                     if not probs:
                         continue
@@ -2015,7 +2074,9 @@ def ev_esportes_summary(user: dict = Depends(get_current_user)):
                             "explanation": _build_explanation(cat["id"], outcome, price, prob_real, ev_value, None),
                         })
                 elif smt == "totals":
-                    line = _parse_total_line(market.get("groupItemTitle") or market.get("question") or "")
+                    line = market.get("line")
+                    if line is None:
+                        line = _parse_total_line(market.get("groupItemTitle") or market.get("question") or "")
                     if line is None:
                         continue
                     probs = _odds_consensus_totals(odds_data, line)
@@ -2046,8 +2107,77 @@ def ev_esportes_summary(user: dict = Depends(get_current_user)):
                             "market_slug": market.get("slug"),
                             "explanation": _build_explanation(cat["id"], outcome, price, prob_real, ev_value, line),
                         })
+                elif smt == "spreads":
+                    line = market.get("line")
+                    if line is None:
+                        line = _parse_total_line(market.get("groupItemTitle") or market.get("question") or "")
+                    if line is None:
+                        continue
+                    probs = _odds_consensus_spreads(odds_data, float(line))
+                    if not probs:
+                        continue
+                    home_norm = _normalize_team_name(odds_ev.get("home", ""))
+                    away_norm = _normalize_team_name(odds_ev.get("away", ""))
+                    for i, outcome in enumerate(outcomes):
+                        price = float(prices[i]) if i < len(prices) else None
+                        if price is None:
+                            continue
+                        outcome_norm = _normalize_team_name(outcome)
+                        if outcome_norm == home_norm:
+                            prob_real = probs.get("home")
+                        elif outcome_norm == away_norm:
+                            prob_real = probs.get("away")
+                        else:
+                            prob_real = None
+                        if prob_real is None:
+                            continue
+                        ev_value = prob_real - price
+                        if ev_value <= 0:
+                            continue
+                        bets.append({
+                            "outcome": outcome,
+                            "price": price,
+                            "prob_real": prob_real,
+                            "prob_impl": price,
+                            "ev": ev_value,
+                            "token_id": token_ids[i] if i < len(token_ids) else None,
+                            "market_slug": market.get("slug"),
+                            "explanation": _build_explanation(cat["id"], outcome, price, prob_real, ev_value, None),
+                        })
+                elif smt == "both_teams_to_score":
+                    probs = _odds_consensus_btts(odds_data)
+                    if not probs:
+                        continue
+                    for i, outcome in enumerate(outcomes):
+                        price = float(prices[i]) if i < len(prices) else None
+                        if price is None:
+                            continue
+                        low = outcome.strip().lower()
+                        if low.startswith("yes"):
+                            prob_real = probs.get("yes")
+                        elif low.startswith("no"):
+                            prob_real = probs.get("no")
+                        else:
+                            prob_real = None
+                        if prob_real is None:
+                            continue
+                        ev_value = prob_real - price
+                        if ev_value <= 0:
+                            continue
+                        bets.append({
+                            "outcome": outcome,
+                            "price": price,
+                            "prob_real": prob_real,
+                            "prob_impl": price,
+                            "ev": ev_value,
+                            "token_id": token_ids[i] if i < len(token_ids) else None,
+                            "market_slug": market.get("slug"),
+                            "explanation": _build_explanation(cat["id"], outcome, price, prob_real, ev_value, None),
+                        })
 
             bets = sorted(bets, key=lambda x: x["ev"], reverse=True)[:5]
+            if not bets:
+                continue
             games.append({
                 "title": title,
                 "slug": ev.get("slug"),
