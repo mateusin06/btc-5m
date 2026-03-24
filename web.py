@@ -316,6 +316,21 @@ def _ensure_trial_row(user_id: str, token: str, email: str) -> None:
         pass
 
 
+def _ensure_trial_row(user_id: str, token: str, email: str) -> None:
+    """Cria a linha em user_config com trial de 2 dias se ainda nÃ£o existir."""
+    trial_end = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
+    try:
+        requests.post(
+            f"{SUPABASE_URL}/rest/v1/user_config",
+            params={"on_conflict": "user_id"},
+            headers={**_supabase_headers(token), "Prefer": "resolution=ignore-duplicates"},
+            json={"user_id": user_id, "email": email or "", "trial_ends_at": trial_end},
+            timeout=10,
+        )
+    except Exception:
+        pass
+
+
 def _user_can_use_bot(row: dict) -> tuple[bool, str]:
     """Retorna (pode_usar, motivo). Motivo: 'trial' | 'subscription' | 'expired'."""
     now = datetime.now(timezone.utc)
@@ -502,6 +517,24 @@ def _opt_float(env: dict[str, str], key: str) -> Optional[float]:
         return float(v)
     except (ValueError, TypeError):
         return None
+
+
+def _config_to_supabase(user_id: str, token: str, data: dict, email: Optional[str] = None) -> None:
+    try:
+        payload = {k: v for k, v in data.items() if v is not None}
+        payload["user_id"] = user_id
+        if email is not None:
+            payload["email"] = email
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/user_config",
+            params={"on_conflict": "user_id"},
+            headers={**_supabase_headers(token), "Prefer": "resolution=merge-duplicates"},
+            json=payload,
+            timeout=10,
+        )
+        r.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        raise HTTPException(status_code=500, detail="Erro ao salvar config. Tente novamente.")
 
 
 def _write_env(env: dict[str, str]) -> None:
