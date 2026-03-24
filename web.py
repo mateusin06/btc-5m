@@ -54,8 +54,8 @@ GAMMA_SPORTS = "https://gamma-api.polymarket.com/sports"
 GAMMA_SERIES = "https://gamma-api.polymarket.com/series"
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
 ODDS_API_IO_BASE = "https://api.odds-api.io/v3"
-ODDS_API_IO_KEY = os.getenv("ODDS_API_IO_KEY", "").strip()
-ODDS_API_IO_BOOKMAKERS = os.getenv("ODDS_API_IO_BOOKMAKERS", "Bet365,DraftKings").strip()
+ODDS_API_IO_KEY = os.getenv("ODDS_API_IO_KEY", "").strip() or "8c3630af6548549eb8adeedf672ff9b80eea2e20b362ef4f4e1782e2c115e949"
+ODDS_API_IO_BOOKMAKERS = os.getenv("ODDS_API_IO_BOOKMAKERS", "").strip() or "Bet365,DraftKings"
 
 CLIMA_CITIES = [
     {"name": "London", "slug": "london", "lat": 51.5072, "lon": -0.1276},
