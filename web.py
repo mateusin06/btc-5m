@@ -50,7 +50,12 @@ if not SUPABASE_URL or not SUPABASE_ANON_KEY:
 
 GAMMA_MARKETS = "https://gamma-api.polymarket.com/markets"
 GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
+GAMMA_SPORTS = "https://gamma-api.polymarket.com/sports"
+GAMMA_SERIES = "https://gamma-api.polymarket.com/series"
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
+ODDS_API_IO_BASE = "https://api.odds-api.io/v3"
+ODDS_API_IO_KEY = os.getenv("ODDS_API_IO_KEY", "").strip()
+ODDS_API_IO_BOOKMAKERS = os.getenv("ODDS_API_IO_BOOKMAKERS", "Bet365,DraftKings").strip()
 
 CLIMA_CITIES = [
     {"name": "London", "slug": "london", "lat": 51.5072, "lon": -0.1276},
@@ -88,6 +93,11 @@ _bot_log_handles: dict[str, list] = {}
 # Um processo de auto-claim por usuário (user_id -> Popen)
 _autoclaim_processes: dict[str, subprocess.Popen] = {}
 _autoclaim_log_handles: dict[str, list] = {}
+
+# Caches simples em memÃ³ria para chamadas externas
+_gamma_cache: dict[str, tuple[float, Any]] = {}
+_odds_cache: dict[str, tuple[float, Any]] = {}
+_ev_esportes_cache: dict[str, tuple[float, Any]] = {}
 
 
 def _writable_log_dir() -> Path:
@@ -1289,6 +1299,74 @@ def claim_run_now(user: dict = Depends(get_current_user)):
     return result
 
 
+def _cache_get(cache: dict, key: str, ttl_sec: int) -> Optional[Any]:
+    item = cache.get(key)
+    if not item:
+        return None
+    ts, value = item
+    if time.time() - ts > ttl_sec:
+        cache.pop(key, None)
+        return None
+    return value
+
+
+def _cache_set(cache: dict, key: str, value: Any) -> None:
+    cache[key] = (time.time(), value)
+
+
+def _cache_peek(cache: dict, key: str) -> Optional[Any]:
+    item = cache.get(key)
+    if not item:
+        return None
+    return item[1]
+
+
+def _gamma_get_sports() -> list[dict]:
+    cached = _cache_get(_gamma_cache, "sports", 300)
+    if cached is not None:
+        return cached
+    try:
+        r = requests.get(GAMMA_SPORTS, timeout=10)
+        data = r.json() if r.ok else []
+    except Exception:
+        data = []
+    _cache_set(_gamma_cache, "sports", data)
+    return data
+
+
+def _gamma_get_series(series_id: str) -> Optional[dict]:
+    cache_key = f"series:{series_id}"
+    cached = _cache_get(_gamma_cache, cache_key, 120)
+    if cached is not None:
+        return cached
+    try:
+        r = requests.get(f"{GAMMA_SERIES}/{series_id}", timeout=10)
+        data = r.json() if r.ok else None
+    except Exception:
+        data = None
+    _cache_set(_gamma_cache, cache_key, data)
+    return data
+
+
+def _odds_get(path: str, params: Optional[dict] = None) -> Optional[dict]:
+    if not ODDS_API_IO_KEY:
+        return None
+    cache_key = f"odds:{path}:{json.dumps(params or {}, sort_keys=True)}"
+    cached = _cache_get(_odds_cache, cache_key, 60)
+    if cached is not None:
+        return cached
+    try:
+        q = {"apiKey": ODDS_API_IO_KEY}
+        if params:
+            q.update(params)
+        r = requests.get(f"{ODDS_API_IO_BASE}{path}", params=q, timeout=15)
+        data = r.json() if r.ok else None
+    except Exception:
+        data = None
+    _cache_set(_odds_cache, cache_key, data)
+    return data
+
+
 def _build_clima_slug(city_slug: str, date_et: datetime) -> str:
     month = date_et.strftime("%B").lower()
     day = str(int(date_et.strftime("%d")))
@@ -1464,6 +1542,158 @@ def _best_ev_outcome_for_market(market: dict, forecast: tuple[float, float]) -> 
     return max(candidates, key=lambda x: x["ev"])
 
 
+def _normalize_team_name(name: str) -> str:
+    t = re.sub(r"[^a-z0-9 ]", " ", (name or "").lower())
+    stop = {"fc", "cf", "sc", "club", "team", "esports", "e-sports", "the"}
+    parts = [p for p in t.split() if p and p not in stop]
+    return " ".join(parts)
+
+
+def _extract_teams(title: str) -> Optional[tuple[str, str]]:
+    if not title:
+        return None
+    separators = [" vs. ", " vs ", " v ", " @ ", " at "]
+    for sep in separators:
+        if sep in title:
+            left, right = title.split(sep, 1)
+            return left.strip(), right.strip()
+    return None
+
+
+def _team_key(a: str, b: str) -> str:
+    na = _normalize_team_name(a)
+    nb = _normalize_team_name(b)
+    return " | ".join(sorted([na, nb]))
+
+
+def _parse_total_line(text: str) -> Optional[float]:
+    if not text:
+        return None
+    nums = re.findall(r"[-+]?[0-9]*\\.?[0-9]+", text)
+    if not nums:
+        return None
+    try:
+        return float(nums[-1])
+    except Exception:
+        return None
+
+
+def _odds_to_prob(odds: Optional[str]) -> Optional[float]:
+    if odds is None:
+        return None
+    try:
+        val = float(odds)
+    except Exception:
+        return None
+    if val == 0:
+        return None
+    # American odds
+    if abs(val) >= 100:
+        if val > 0:
+            return 100.0 / (val + 100.0)
+        return abs(val) / (abs(val) + 100.0)
+    # Decimal odds
+    if val >= 1.01:
+        return 1.0 / val
+    return None
+
+
+def _odds_consensus_moneyline(odds_data: dict) -> Optional[dict]:
+    bookies = odds_data.get("bookmakers") if odds_data else None
+    if not bookies:
+        return None
+    home_probs = []
+    away_probs = []
+    draw_probs = []
+    for markets in bookies.values():
+        for m in markets:
+            if m.get("name") not in ("ML", "Moneyline", "Match Winner", "Match Odds"):
+                continue
+            for o in m.get("odds", []):
+                if "home" in o:
+                    p = _odds_to_prob(o.get("home"))
+                    if p is not None:
+                        home_probs.append(p)
+                if "away" in o:
+                    p = _odds_to_prob(o.get("away"))
+                    if p is not None:
+                        away_probs.append(p)
+                if "draw" in o:
+                    p = _odds_to_prob(o.get("draw"))
+                    if p is not None:
+                        draw_probs.append(p)
+            break
+    if not home_probs and not away_probs:
+        return None
+    home = sum(home_probs) / len(home_probs) if home_probs else None
+    away = sum(away_probs) / len(away_probs) if away_probs else None
+    draw = sum(draw_probs) / len(draw_probs) if draw_probs else None
+    return {"home": home, "away": away, "draw": draw}
+
+
+def _odds_consensus_totals(odds_data: dict, line: float) -> Optional[dict]:
+    bookies = odds_data.get("bookmakers") if odds_data else None
+    if not bookies:
+        return None
+    over_probs = []
+    under_probs = []
+    best_line = None
+    for markets in bookies.values():
+        for m in markets:
+            if m.get("name") != "Totals":
+                continue
+            # pick closest line
+            closest = None
+            for o in m.get("odds", []):
+                hdp = o.get("hdp")
+                if hdp is None:
+                    continue
+                diff = abs(float(hdp) - line)
+                if closest is None or diff < closest[0]:
+                    closest = (diff, o)
+            if closest:
+                o = closest[1]
+                best_line = o.get("hdp", best_line)
+                p_over = _odds_to_prob(o.get("over"))
+                p_under = _odds_to_prob(o.get("under"))
+                if p_over is not None:
+                    over_probs.append(p_over)
+                if p_under is not None:
+                    under_probs.append(p_under)
+            break
+    if not over_probs and not under_probs:
+        return None
+    over = sum(over_probs) / len(over_probs) if over_probs else None
+    under = sum(under_probs) / len(under_probs) if under_probs else None
+    return {"over": over, "under": under, "line": best_line}
+
+
+def _ev_level(ev: float) -> str:
+    if ev >= 0.08:
+        return "grande"
+    if ev >= 0.04:
+        return "moderada"
+    return "pequena"
+
+
+def _pace_label(total_line: Optional[float], category: str) -> str:
+    if total_line is None:
+        return "neutro"
+    if category == "nba":
+        if total_line >= 228:
+            return "alto"
+        if total_line <= 214:
+            return "baixo"
+        return "medio"
+    if category == "soccer":
+        if total_line >= 3:
+            return "alto"
+        if total_line <= 2:
+            return "baixo"
+        return "medio"
+    return "neutro"
+
+
 @app.get("/api/ev-clima/summary")
 def ev_clima_summary(user: dict = Depends(get_current_user)):
     tz = ZoneInfo("America/New_York")
@@ -1513,13 +1743,373 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
     return {"items": items, "updated_at": datetime.now(timezone.utc).isoformat()}
 
 
+def _gamma_sport_codes_by_category(category: str) -> list[str]:
+    sports = _gamma_get_sports()
+    if category == "nba":
+        return ["nba"]
+    if category == "soccer":
+        soccer_codes = []
+        soccer_markers = [
+            "premierleague",
+            "laliga",
+            "uefa",
+            "fifa",
+            "mls",
+            "seriea",
+            "bundesliga",
+            "ligue",
+            "conmebol",
+            "copa",
+            "afc",
+            "concacaf",
+        ]
+        for s in sports:
+            res = (s.get("resolution") or "").lower()
+            if any(m in res for m in soccer_markers):
+                soccer_codes.append(s.get("sport"))
+        return sorted({c for c in soccer_codes if c})
+    if category == "esports":
+        esport_codes = []
+        esport_markers = ["hltv", "lolesports", "vlr.gg", "liquipedia", "esports", "dota"]
+        for s in sports:
+            res = (s.get("resolution") or "").lower()
+            if any(m in res for m in esport_markers):
+                esport_codes.append(s.get("sport"))
+        # fallback comum
+        esport_codes.extend(["cs2", "valorant", "lol", "dota2"])
+        return sorted({c for c in esport_codes if c})
+    return []
+
+
+def _gamma_upcoming_events_for_codes(codes: list[str], limit: int = 20) -> list[dict]:
+    events: list[dict] = []
+    now = datetime.now(timezone.utc)
+    max_date = now + timedelta(days=2)
+    for code in codes:
+        sport_entry = next((s for s in _gamma_get_sports() if s.get("sport") == code), None)
+        if not sport_entry:
+            continue
+        series_id = str(sport_entry.get("series") or "")
+        if not series_id:
+            continue
+        series = _gamma_get_series(series_id)
+        if not series:
+            continue
+        for ev in series.get("events", []):
+            if not ev or ev.get("closed"):
+                continue
+            event_date = ev.get("eventDate")
+            start_time = ev.get("startTime") or ev.get("gameStartTime")
+            dt = None
+            if start_time:
+                try:
+                    dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                except Exception:
+                    dt = None
+            elif event_date:
+                try:
+                    dt = datetime.fromisoformat(event_date + "T00:00:00+00:00")
+                except Exception:
+                    dt = None
+            if dt and dt > max_date:
+                continue
+            events.append(ev)
+            if len(events) >= limit:
+                return events
+    return events
+
+
+def _odds_events_index(sport: str, leagues: Optional[list[str]] = None) -> dict[str, list[dict]]:
+    events: list[dict] = []
+    if leagues:
+        for league in leagues:
+            data = _odds_get("/events", {"sport": sport, "league": league, "status": "pending", "limit": 200})
+            if isinstance(data, list):
+                events.extend(data)
+    else:
+        data = _odds_get("/events", {"sport": sport, "status": "pending", "limit": 200})
+        if isinstance(data, list):
+            events.extend(data)
+    index: dict[str, list[dict]] = {}
+    for ev in events:
+        home = ev.get("home")
+        away = ev.get("away")
+        if not home or not away:
+            continue
+        key = _team_key(home, away)
+        index.setdefault(key, []).append(ev)
+    return index
+
+
+def _match_odds_event(index: dict[str, list[dict]], team_a: str, team_b: str, start_time: Optional[str]) -> Optional[dict]:
+    key = _team_key(team_a, team_b)
+    candidates = index.get(key, [])
+    if not candidates:
+        return None
+    if not start_time:
+        return candidates[0]
+    try:
+        target = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+    except Exception:
+        return candidates[0]
+    best = None
+    for ev in candidates:
+        try:
+            dt = datetime.fromisoformat((ev.get("date") or "").replace("Z", "+00:00"))
+        except Exception:
+            dt = None
+        if not dt:
+            continue
+        diff = abs((dt - target).total_seconds())
+        if best is None or diff < best[0]:
+            best = (diff, ev)
+    return best[1] if best else candidates[0]
+
+
+def _build_explanation(category: str, outcome: str, prob_impl: float, prob_real: float, ev: float, total_line: Optional[float]) -> str:
+    adv = _ev_level(ev)
+    pace = _pace_label(total_line, category)
+    impl = prob_impl * 100
+    real = prob_real * 100
+    if category == "nba":
+        return (
+            f"Vantagem real {adv} (baseada em odds consenso). Ritmo esperado: {pace}"
+            + (f" (linha {total_line}). " if total_line else ". ")
+            + f"Prob. implicita {impl:.1f}% vs real {real:.1f}%."
+        )
+    if category == "soccer":
+        return (
+            f"Vantagem real {adv}. Ritmo esperado: {pace}"
+            + (f" (linha {total_line}). " if total_line else ". ")
+            + f"Prob. implicita {impl:.1f}% vs real {real:.1f}%."
+        )
+    return (
+        f"Vantagem real {adv} (odds consenso). "
+        f"Prob. implicita {impl:.1f}% vs real {real:.1f}%."
+    )
+
+
+@app.get("/api/ev-esportes/summary")
+def ev_esportes_summary(user: dict = Depends(get_current_user)):
+    cached_any = _cache_peek(_ev_esportes_cache, "summary")
+    cached = _cache_get(_ev_esportes_cache, "summary", 20 * 60)
+    if cached is not None:
+        cached = dict(cached)
+        cached["from_cache"] = True
+        return cached
+    categories = [
+        {"id": "nba", "label": "NBA", "sport": "basketball", "leagues": ["usa-nba"]},
+        {"id": "soccer", "label": "Futebol", "sport": "football", "leagues": [
+            "england-premier-league",
+            "spain-la-liga",
+            "italy-serie-a",
+            "germany-bundesliga",
+            "france-ligue-1",
+            "international-clubs-uefa-champions-league",
+            "international-clubs-uefa-europa-league",
+            "international-clubs-uefa-conference-league",
+            "international-clubs-copa-libertadores",
+            "brazil-brasileiro-serie-a",
+            "usa-mls",
+        ]},
+        {"id": "esports", "label": "E-sports", "sport": "esports", "leagues": None},
+    ]
+
+    result = []
+    remaining_budget = 20
+    used_requests = 0
+    limit_reached = False
+    for cat in categories:
+        odds_index = _odds_events_index(cat["sport"], cat["leagues"])
+        codes = _gamma_sport_codes_by_category(cat["id"])
+        events = _gamma_upcoming_events_for_codes(codes, limit=20)
+        games = []
+        for ev in events:
+            if remaining_budget <= 0:
+                limit_reached = True
+                break
+            title = ev.get("title") or ev.get("ticker") or ""
+            teams = _extract_teams(title)
+            if not teams:
+                continue
+            team_a, team_b = teams
+            odds_ev = _match_odds_event(odds_index, team_a, team_b, ev.get("startTime") or ev.get("gameStartTime"))
+            if not odds_ev:
+                continue
+            odds_data = _odds_get("/odds", {"eventId": odds_ev.get("id"), "bookmakers": ODDS_API_IO_BOOKMAKERS})
+            if not odds_data:
+                continue
+            remaining_budget -= 1
+            used_requests += 1
+
+            event_detail = _get_event_by_slug_gamma(ev.get("slug"))
+            if not event_detail:
+                continue
+
+            bets = []
+            for market in event_detail.get("markets", []):
+                if not market.get("active") or market.get("closed"):
+                    continue
+                outcomes, prices, token_ids = _parse_outcomes(market)
+                if not outcomes or not prices:
+                    continue
+                smt = market.get("sportsMarketType")
+                if smt == "moneyline":
+                    probs = _odds_consensus_moneyline(odds_data)
+                    if not probs:
+                        continue
+                    for i, outcome in enumerate(outcomes):
+                        price = float(prices[i]) if i < len(prices) else None
+                        if price is None:
+                            continue
+                        outcome_norm = _normalize_team_name(outcome)
+                        home_norm = _normalize_team_name(odds_ev.get("home", ""))
+                        away_norm = _normalize_team_name(odds_ev.get("away", ""))
+                        if outcome_norm == home_norm:
+                            prob_real = probs.get("home")
+                        elif outcome_norm == away_norm:
+                            prob_real = probs.get("away")
+                        elif outcome.lower() in ("draw", "tie"):
+                            prob_real = probs.get("draw")
+                        else:
+                            prob_real = None
+                        if prob_real is None:
+                            continue
+                        ev_value = prob_real - price
+                        if ev_value <= 0:
+                            continue
+                        bets.append({
+                            "outcome": outcome,
+                            "price": price,
+                            "prob_real": prob_real,
+                            "prob_impl": price,
+                            "ev": ev_value,
+                            "token_id": token_ids[i] if i < len(token_ids) else None,
+                            "market_slug": market.get("slug"),
+                            "explanation": _build_explanation(cat["id"], outcome, price, prob_real, ev_value, None),
+                        })
+                elif smt == "totals":
+                    line = _parse_total_line(market.get("groupItemTitle") or market.get("question") or "")
+                    if line is None:
+                        continue
+                    probs = _odds_consensus_totals(odds_data, line)
+                    if not probs:
+                        continue
+                    for i, outcome in enumerate(outcomes):
+                        price = float(prices[i]) if i < len(prices) else None
+                        if price is None:
+                            continue
+                        if outcome.lower().startswith("over"):
+                            prob_real = probs.get("over")
+                        elif outcome.lower().startswith("under"):
+                            prob_real = probs.get("under")
+                        else:
+                            prob_real = None
+                        if prob_real is None:
+                            continue
+                        ev_value = prob_real - price
+                        if ev_value <= 0:
+                            continue
+                        bets.append({
+                            "outcome": outcome,
+                            "price": price,
+                            "prob_real": prob_real,
+                            "prob_impl": price,
+                            "ev": ev_value,
+                            "token_id": token_ids[i] if i < len(token_ids) else None,
+                            "market_slug": market.get("slug"),
+                            "explanation": _build_explanation(cat["id"], outcome, price, prob_real, ev_value, line),
+                        })
+
+            bets = sorted(bets, key=lambda x: x["ev"], reverse=True)[:5]
+            if not bets:
+                continue
+            games.append({
+                "title": title,
+                "slug": ev.get("slug"),
+                "start_time": ev.get("startTime") or ev.get("gameStartTime"),
+                "bets": bets,
+            })
+
+        result.append({"id": cat["id"], "label": cat["label"], "games": games})
+    payload = {
+        "categories": result,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "requests_used": used_requests,
+        "requests_limit": 20,
+        "limit_reached": limit_reached,
+    }
+    if not result and cached_any is not None:
+        cached_any = dict(cached_any)
+        cached_any["from_cache"] = True
+        cached_any["stale_reason"] = "limit_or_error"
+        return cached_any
+    _cache_set(_ev_esportes_cache, "summary", payload)
+    return payload
+
+
 class EvClimaBuyRequest(BaseModel):
+    token_id: str
+    amount: Optional[float] = None
+
+
+class EvEsportesBuyRequest(BaseModel):
     token_id: str
     amount: Optional[float] = None
 
 
 @app.post("/api/ev-clima/buy")
 def ev_clima_buy(req: EvClimaBuyRequest, user: dict = Depends(get_current_user)):
+    row = _config_from_supabase(user["id"], user["_token"])
+    if not row:
+        raise HTTPException(status_code=400, detail="Config não encontrada.")
+    key = (row.get("private_key") or "").strip()
+    if not key or key == "0x...":
+        raise HTTPException(status_code=400, detail="Salve a chave privada na Config primeiro.")
+    api_key = (row.get("api_key") or "").strip()
+    api_secret = (row.get("api_secret") or "").strip()
+    api_passphrase = (row.get("api_passphrase") or "").strip()
+    if not api_key or not api_secret or not api_passphrase:
+        raise HTTPException(status_code=400, detail="Salve as credenciais API da Polymarket na Config.")
+
+    from py_clob_client.client import ClobClient
+    from py_clob_client.clob_types import MarketOrderArgs, OrderType
+    from py_clob_client.order_builder.constants import BUY
+
+    sig_type = int(row.get("signature_type") or 0)
+    funder = (row.get("funder_address") or "").strip()
+    client = ClobClient(
+        CLOB_HOST,
+        chain_id=CHAIN_ID,
+        key=key,
+        signature_type=sig_type,
+        funder=funder or None,
+    )
+    client.set_api_creds(api_key, api_secret, api_passphrase)
+
+    min_bet = float(row.get("min_bet", 5))
+    safe_bet = row.get("safe_bet")
+    amount = float(req.amount) if req.amount is not None else (float(safe_bet) if safe_bet else min_bet)
+    amount = max(amount, min_bet)
+
+    mo = MarketOrderArgs(
+        token_id=req.token_id,
+        amount=amount,
+        side=BUY,
+        price=float(row.get("max_token_price", 0.95)),
+        order_type=OrderType.FOK,
+    )
+    try:
+        signed = client.create_market_order(mo)
+        resp = client.post_order(signed, OrderType.FOK)
+        ok = resp.get("status") in ("matched", "live")
+        return {"ok": ok, "status": resp.get("status")}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Falha ao enviar ordem: {e!s}")
+
+
+@app.post("/api/ev-esportes/buy")
+def ev_esportes_buy(req: EvEsportesBuyRequest, user: dict = Depends(get_current_user)):
     row = _config_from_supabase(user["id"], user["_token"])
     if not row:
         raise HTTPException(status_code=400, detail="Config não encontrada.")
