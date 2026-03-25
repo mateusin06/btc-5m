@@ -330,11 +330,8 @@ def _check_ev_plus(
 
 
 def _dynamic_ev_margin(result) -> float:
-    """Margem dinâmica 3%–8% para modo only_hedge_plus (baseada em window_delta_pct)."""
-    if result is None:
-        return 0.03
-    v = abs((getattr(result, "window_delta_pct", 0) or 0)) / 100.0
-    return max(0.03, min(0.08, 0.03 + (v * 0.5)))
+    """Margem fixa de EV+: 3%."""
+    return 0.03
 
 
 def _sync_balance_allowance(client) -> None:
