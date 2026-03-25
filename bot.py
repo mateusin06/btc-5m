@@ -49,7 +49,7 @@ MODES = {
     "safe": {"min_confidence": 0.72},
     "spike_ai": {"min_confidence": 0.72},  # Igual ao safe, mas com gate de IA (Ollama) antes de executar
     "moon": {"min_confidence": 0.40},  # Estratégia MOON: CVD (divergência + momentum) com mão fixa safe
-    "multi_confirm": {"min_confidence": 0.65},  # Multi-Confirmacao + Regime + Divergencia (sinais)
+    "multi_confirm": {"min_confidence": 0.40},  # Multi-Confirmacao + Regime + Divergencia (sinais)
     "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.58},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
@@ -103,6 +103,7 @@ MIN_SHARES = 5
 POLY_MIN_ORDER_USD = 1.0  # Polymarket exige mínimo $1 por ordem (marketable BUY)
 LIMIT_FALLBACK_PRICE = 0.95
 MAX_TOKEN_PRICE = float(os.getenv("MAX_TOKEN_PRICE", "0.98"))
+MIN_TOKEN_PRICE = float(os.getenv("MIN_TOKEN_PRICE", "0.30"))
 
 # Última janela em que apostamos por mercado (evita repetir no mesmo mercado na mesma janela)
 _last_bet_window_by_market: dict[str, int] = {}
@@ -1128,7 +1129,7 @@ def _run_multi_confirm_signal(config: Config, market: str, window_ts: int, windo
             market_link = f"https://polymarket.com/market/{slug}"
             _tg_send(
                 f"[{market.upper()}] SINAL MC+RD: {signal.direction.upper()} | "
-                f"conf {signal.confidence:.0%} | {signal.reason}\n{market_link}"
+                f"conf {signal.confidence:.0%} | confs {signal.confirmations}/{signal.total_confirmations} | {signal.reason}\n{market_link}"
             )
             _last_bet_window_by_market[market] = window_ts
             return True
@@ -1752,7 +1753,11 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                 token_price = delta_to_token_price(final_result.window_delta_pct if final_result else 0)
             if token_price > MAX_TOKEN_PRICE:
                 if active_mode != "arbitragem":
-                    print(f"  [{market.upper()}] Token @ ${token_price:.2f} > 90c, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
+                    print(f"  [{market.upper()}] Token @ ${token_price:.2f} > ${MAX_TOKEN_PRICE:.2f}, pulando (max ${MAX_TOKEN_PRICE:.2f})", flush=True)
+                    return False
+            if token_price < MIN_TOKEN_PRICE:
+                if active_mode != "arbitragem":
+                    print(f"  [{market.upper()}] Token @ ${token_price:.2f} < ${MIN_TOKEN_PRICE:.2f}, pulando (min ${MIN_TOKEN_PRICE:.2f})", flush=True)
                     return False
             if active_mode == "moon" and token_price is not None and token_price < MOON_MIN_ODD:
                 print(f"  [{market.upper()}] MOON: Token @ ${token_price:.2f} < ${MOON_MIN_ODD:.2f}, pulando.", flush=True)
@@ -1810,7 +1815,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         return False
     if real_price is not None and real_price > MAX_TOKEN_PRICE and active_mode != "arbitragem":
         print(
-            f"  [{market.upper()}] Token @ ${real_price:.2f} > 90c, aguardando cair até ${MAX_TOKEN_PRICE:.2f} (até o fim da janela).",
+            f"  [{market.upper()}] Token @ ${real_price:.2f} > ${MAX_TOKEN_PRICE:.2f}, aguardando cair até ${MAX_TOKEN_PRICE:.2f} (até o fim da janela).",
             flush=True,
         )
         # Aguarda preço voltar dentro do limite até o fechamento
@@ -1824,6 +1829,22 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
                 break
         if real_price is None or real_price > MAX_TOKEN_PRICE:
             print(f"  [{market.upper()}] Token continuou > ${MAX_TOKEN_PRICE:.2f} até o fim da janela, pulando.", flush=True)
+            return False
+    if real_price is not None and real_price < MIN_TOKEN_PRICE and active_mode != "arbitragem":
+        print(
+            f"  [{market.upper()}] Token @ ${real_price:.2f} < ${MIN_TOKEN_PRICE:.2f}, aguardando subir até ${MIN_TOKEN_PRICE:.2f} (até o fim da janela).",
+            flush=True,
+        )
+        while int(time.time()) < close_time:
+            time.sleep(ORDER_RETRY_INTERVAL)
+            real_price = get_token_price(token_id, "BUY")
+            if real_price is None and event:
+                from api import get_token_price_from_event
+                real_price = get_token_price_from_event(event, trade_direction)
+            if real_price is not None and real_price >= MIN_TOKEN_PRICE:
+                break
+        if real_price is None or real_price < MIN_TOKEN_PRICE:
+            print(f"  [{market.upper()}] Token continuou < ${MIN_TOKEN_PRICE:.2f} até o fim da janela, pulando.", flush=True)
             return False
     if active_mode == "moon" and real_price is not None and real_price < MOON_MIN_ODD:
         print(f"  [{market.upper()}] MOON: Token @ ${real_price:.2f} < ${MOON_MIN_ODD:.2f}, pulando.", flush=True)
@@ -2197,7 +2218,7 @@ def main():
     if config.mode == "moon" and config.fixed_bet_safe is not None:
         print(f"MOON: estratégia CVD (divergência + momentum) com mão fixa safe | entrada fixa ${config.fixed_bet_safe:.2f}", flush=True)
     if config.mode == "multi_confirm":
-        print("MC+RD: Multi-Confirmacao + Regime + Divergencia | entra apenas com EV+", flush=True)
+        print("MC+RD: Multi-Confirmacao + Regime + Divergencia | min conf 40% | min confs 3/6 | entra apenas com EV+", flush=True)
     if config.mode == "only_hedge_plus":
         print(f"Only Hedge+: entrada fixa ${config.fixed_bet_only_hedge or config.min_bet:.2f} | só entra com EV+", flush=True)
     if config.mode == "odd_master":

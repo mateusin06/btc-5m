@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from typing import Optional
 
 # Multi-Confirmacao + Regime + Divergencia
-MULTI_MIN_CONF = 0.55
-MULTI_MIN_CONFIRMATIONS_TREND = 4
+MULTI_MIN_CONF = 0.40
+MULTI_MIN_CONFIRMATIONS_TREND = 3
 MULTI_MIN_CONFIRMATIONS_RANGE = 3
 MULTI_DELTA_CONFIRM_PCT = 0.01
 MULTI_TREND_STRENGTH = 0.0007
@@ -209,13 +209,11 @@ def analyze_multi_confirm(
             total += 1
         if (vol_dir == 1 and up) or (vol_dir == -1 and not up):
             total += 1
-        if (tick_dir == 1 and up) or (tick_dir == -1 and not up):
-            total += 1
         if (divergence == "bullish" and up) or (divergence == "bearish" and not up):
             total += 1
         return total
 
-    total_confirmations = 7
+    total_confirmations = 6
     trend_dir = "up" if ema_dir > 0 else ("down" if ema_dir < 0 else "")
 
     details = {
