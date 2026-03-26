@@ -9,6 +9,8 @@ import json
 import os
 import json
 import math
+import statistics
+import calendar
 from zoneinfo import ZoneInfo
 import re
 import subprocess
@@ -53,6 +55,7 @@ GAMMA_EVENTS = "https://gamma-api.polymarket.com/events"
 GAMMA_SPORTS = "https://gamma-api.polymarket.com/sports"
 GAMMA_SERIES = "https://gamma-api.polymarket.com/series"
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
 OPEN_METEO_GEOCODE = "https://geocoding-api.open-meteo.com/v1/search"
 METEOBLUE_BASIC_DAY = "https://my.meteoblue.com/packages/basic-day"
 METEOBLUE_API_KEY = os.getenv("METEOBLUE_API_KEY", "").strip() or "EinsFhSxjCfcHkOL"
@@ -1444,6 +1447,116 @@ def _norm_cdf(x: float, mu: float, sigma: float) -> float:
     z = (x - mu) / (sigma * math.sqrt(2))
     return 0.5 * (1 + math.erf(z))
 
+def _skew_sigmas(sigma: float, skew: float) -> tuple[float, float]:
+    """Retorna (sigma_left, sigma_right) para uma normal assimétrica simples."""
+    if sigma <= 0:
+        return (1.0, 1.0)
+    s = max(-0.9, min(0.9, float(skew)))
+    if s >= 0:
+        sigma_left = sigma * (1 - 0.3 * s)
+        sigma_right = sigma * (1 + 0.7 * s)
+    else:
+        sigma_left = sigma * (1 + 0.7 * abs(s))
+        sigma_right = sigma * (1 - 0.3 * abs(s))
+    sigma_left = max(0.5, sigma_left)
+    sigma_right = max(0.5, sigma_right)
+    return (sigma_left, sigma_right)
+
+def _skew_cdf(x: float, mu: float, sigma: float, skew: float) -> float:
+    """CDF de normal assimétrica (split normal) com sigmas diferentes."""
+    sigma_left, sigma_right = _skew_sigmas(sigma, skew)
+    if sigma_left <= 0 or sigma_right <= 0:
+        return 0.5
+    w_left = sigma_left / (sigma_left + sigma_right)
+    w_right = 1.0 - w_left
+    if x < mu:
+        return w_left * _norm_cdf(x, mu, sigma_left)
+    return w_left + (w_right * _norm_cdf(x, mu, sigma_right))
+
+def _season_for_city_date(city: dict, date_obj: datetime) -> tuple[str, list[int]]:
+    lat = city.get("lat")
+    north = True if lat is None else lat >= 0
+    m = date_obj.month
+    if north:
+        if m in (12, 1, 2):
+            return ("winter", [12, 1, 2])
+        if m in (3, 4, 5):
+            return ("spring", [3, 4, 5])
+        if m in (6, 7, 8):
+            return ("summer", [6, 7, 8])
+        return ("fall", [9, 10, 11])
+    if m in (12, 1, 2):
+        return ("summer", [12, 1, 2])
+    if m in (3, 4, 5):
+        return ("fall", [3, 4, 5])
+    if m in (6, 7, 8):
+        return ("winter", [6, 7, 8])
+    return ("spring", [9, 10, 11])
+
+def _historical_sigma_openmeteo(city: dict, unit: str, target_date: datetime) -> Optional[float]:
+    city = _resolve_city_coords(city) or city
+    if city.get("lat") is None or city.get("lon") is None:
+        return None
+    season, months = _season_for_city_date(city, target_date)
+    cache_key = f"sigma_hist:{city.get('slug') or city.get('name')}:{season}:{unit}"
+    cached = _cache_get(_ev_clima_cache, cache_key, 7 * 24 * 60 * 60)
+    if cached is not None:
+        return cached
+    end_year = target_date.year - 1
+    start_year = end_year - 2
+    if months == [12, 1, 2]:
+        start_date = f"{start_year - 1}-12-01"
+        end_date = f"{end_year}-02-{calendar.monthrange(end_year, 2)[1]:02d}"
+    else:
+        start_month = min(months)
+        end_month = max(months)
+        start_date = f"{start_year}-{start_month:02d}-01"
+        end_date = f"{end_year}-{end_month:02d}-{calendar.monthrange(end_year, end_month)[1]:02d}"
+    params = {
+        "latitude": city["lat"],
+        "longitude": city["lon"],
+        "start_date": start_date,
+        "end_date": end_date,
+        "daily": "temperature_2m_max",
+        "timezone": "UTC",
+    }
+    if unit == "f":
+        params["temperature_unit"] = "fahrenheit"
+    try:
+        r = requests.get(OPEN_METEO_ARCHIVE, params=params, timeout=10)
+        if not r.ok:
+            return None
+        payload = r.json() or {}
+        daily = payload.get("daily") or {}
+        temps = daily.get("temperature_2m_max") or []
+        dates = daily.get("time") or []
+        if not temps or not dates:
+            return None
+        values = []
+        for t, d in zip(temps, dates):
+            try:
+                m = int(d.split("-")[1])
+            except Exception:
+                continue
+            if m in months:
+                values.append(float(t))
+        if len(values) < 10:
+            return None
+        sigma_hist = statistics.pstdev(values)
+        sigma_hist = max(1.0, sigma_hist)
+        _cache_set(_ev_clima_cache, cache_key, sigma_hist)
+        return sigma_hist
+    except Exception:
+        return None
+
+def _skew_for_city_date(city: dict, target_date: datetime) -> float:
+    season, _ = _season_for_city_date(city, target_date)
+    if season == "summer":
+        return 0.6
+    if season in ("spring", "fall"):
+        return 0.3
+    return 0.0
+
 
 def _resolve_city_coords(city: dict) -> Optional[dict]:
     if city.get("lat") is not None and city.get("lon") is not None:
@@ -1570,7 +1683,7 @@ def _forecast_meteoblue(city: dict, unit: str, target_date: datetime) -> Optiona
         return None
 
 
-def _forecast_max_and_sigma(city: dict, unit: str, target_date: datetime) -> Optional[tuple[float, float]]:
+def _forecast_max_and_sigma(city: dict, unit: str, target_date: datetime) -> Optional[dict]:
     sources = []
     om = _forecast_openmeteo(city, unit, target_date)
     if om:
@@ -1581,26 +1694,48 @@ def _forecast_max_and_sigma(city: dict, unit: str, target_date: datetime) -> Opt
     if not sources:
         return None
     max_avg = sum(s[0] for s in sources) / len(sources)
-    sigma_avg = sum(s[1] for s in sources) / len(sources)
-    sigma_avg = max(1.0, sigma_avg)
-    return max_avg, sigma_avg
+    sigma_model = sum(s[1] for s in sources) / len(sources)
+    sigma_model = max(1.0, sigma_model)
+    sigma_hist = _historical_sigma_openmeteo(city, unit, target_date)
+    sigma_cal = sigma_model
+    if sigma_hist:
+        sigma_cal = (0.5 * sigma_model) + (0.5 * sigma_hist)
+    if om and mb:
+        model_diff = abs(om[0] - mb[0])
+        sigma_cal += model_diff * 0.15
+    sigma_cal = max(1.0, sigma_cal)
+    skew = _skew_for_city_date(city, target_date)
+    return {
+        "max_temp": max_avg,
+        "sigma": sigma_cal,
+        "sigma_model": sigma_model,
+        "sigma_hist": sigma_hist,
+        "skew": skew,
+    }
 
 
-def _range_prob(low: Optional[float], high: Optional[float], max_temp: float, sigma: float) -> float:
+def _range_prob(low: Optional[float], high: Optional[float], max_temp: float, sigma: float, skew: float = 0.0) -> float:
     if low is not None and high is not None and low == high:
         low = low - 0.5
         high = high + 0.5
     if low is None and high is None:
         return 0.0
+    cdf = (lambda x: _skew_cdf(x, max_temp, sigma, skew)) if abs(skew) > 0.001 else (lambda x: _norm_cdf(x, max_temp, sigma))
     if low is None:
-        return _norm_cdf(high, max_temp, sigma)
+        return cdf(high)
     if high is None:
-        return 1.0 - _norm_cdf(low, max_temp, sigma)
-    return max(0.0, _norm_cdf(high, max_temp, sigma) - _norm_cdf(low, max_temp, sigma))
+        return 1.0 - cdf(low)
+    return max(0.0, cdf(high) - cdf(low))
 
 
-def _best_ev_outcome_for_market(market: dict, forecast: tuple[float, float]) -> Optional[dict]:
-    max_temp, sigma = forecast
+def _best_ev_outcome_for_market(market: dict, forecast) -> Optional[dict]:
+    if isinstance(forecast, dict):
+        max_temp = forecast.get("max_temp")
+        sigma = forecast.get("sigma")
+        skew = forecast.get("skew", 0.0)
+    else:
+        max_temp, sigma = forecast
+        skew = 0.0
     outcomes, prices, token_ids = _parse_outcomes(market)
     if len(outcomes) < 2 or len(prices) < 2:
         return None
@@ -1608,7 +1743,7 @@ def _best_ev_outcome_for_market(market: dict, forecast: tuple[float, float]) -> 
     low, high = _parse_range(title)
     if low is None and high is None:
         return None
-    prob_yes = _range_prob(low, high, max_temp, sigma)
+    prob_yes = _range_prob(low, high, max_temp, sigma, skew)
     prob_no = 1.0 - prob_yes
     try:
         yes_idx = outcomes.index("Yes")
@@ -1631,6 +1766,7 @@ def _best_ev_outcome_for_market(market: dict, forecast: tuple[float, float]) -> 
             "market_slug": market.get("slug"),
             "max_temp": max_temp,
             "sigma": sigma,
+            "skew": skew,
         })
     if no_idx < len(prices) and no_idx < len(token_ids):
         no_price = float(prices[no_idx])
@@ -1643,6 +1779,7 @@ def _best_ev_outcome_for_market(market: dict, forecast: tuple[float, float]) -> 
             "market_slug": market.get("slug"),
             "max_temp": max_temp,
             "sigma": sigma,
+            "skew": skew,
         })
     if not candidates:
         return None
@@ -1912,7 +2049,7 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
                     continue
                 explanation = (
                     f"Max forecast {candidate['max_temp']:.1f} ({unit}) | sigma {candidate['sigma']:.1f} | "
-                    f"prob {candidate['prob']*100:.1f}% | EV {candidate['ev']*100:.1f}%"
+                    f"prob {candidate['prob']*100:.1f}% | EV {candidate['ev']*100:.1f}% | skew {candidate.get('skew', 0):+.2f}"
                 )
                 candidate = dict(candidate)
                 candidate["explanation"] = explanation
