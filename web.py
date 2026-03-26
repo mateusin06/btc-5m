@@ -1953,7 +1953,16 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
                 "explanation": c["explanation"],
                 "link": c["link"],
             })
-    top5 = sorted(top_candidates, key=lambda c: (c["sigma"], -c["prob"]))[:5]
+    top5 = []
+    seen_cities = set()
+    for c in sorted(top_candidates, key=lambda c: (c["sigma"], -c["prob"])):
+        city_key = (c.get("city") or "").strip().lower()
+        if not city_key or city_key in seen_cities:
+            continue
+        seen_cities.add(city_key)
+        top5.append(c)
+        if len(top5) >= 5:
+            break
     payload = {"items": items, "top5": top5, "updated_at": datetime.now(timezone.utc).isoformat()}
     _cache_set(_ev_clima_cache, "summary", payload)
     return payload
