@@ -1907,6 +1907,9 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
         for m in markets:
             candidate = _best_ev_outcome_for_market(m, forecast)
             if candidate and candidate.get("ev", 0) > 0:
+                price_val = float(candidate.get("price") or 0)
+                if price_val < 0.20 or price_val > 0.97:
+                    continue
                 explanation = (
                     f"Max forecast {candidate['max_temp']:.1f} ({unit}) | sigma {candidate['sigma']:.1f} | "
                     f"prob {candidate['prob']*100:.1f}% | EV {candidate['ev']*100:.1f}%"
