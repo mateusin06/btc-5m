@@ -441,6 +441,14 @@
             <input type="number" id="clima-bet-amount" step="0.01" min="0" class="w-24 bg-[#0f1116] border border-border rounded-lg px-2 py-1 text-sm" />
           </div>
         </div>
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-semibold text-white">Top 5 do dia (menor sigma + maior prob.)</h3>
+            <span id="clima-top5-meta" class="text-xs text-muted"></span>
+          </div>
+          <div id="clima-top5-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3"></div>
+          <p id="clima-top5-status" class="text-xs text-muted mt-2"></p>
+        </div>
         <div id="clima-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         <p id="clima-status" class="text-sm text-muted mt-3"></p>
       </div>
@@ -995,6 +1003,9 @@
     async function loadEvClima() {
       const grid = getEl('clima-grid');
       const status = getEl('clima-status');
+      const topGrid = getEl('clima-top5-grid');
+      const topStatus = getEl('clima-top5-status');
+      const topMeta = getEl('clima-top5-meta');
       if (!grid || !status) return;
       status.textContent = 'Carregando...';
       try {
@@ -1002,10 +1013,31 @@
         if (!r.ok) throw new Error(await r.text());
         const data = await r.json();
         const items = data.items || [];
+        const top5 = data.top5 || [];
         if (!items.length) {
           grid.innerHTML = '';
           status.textContent = 'Nenhum dado de clima disponível.';
           return;
+        }
+        if (topGrid) {
+          if (!top5.length) {
+            topGrid.innerHTML = '';
+            if (topStatus) topStatus.textContent = 'Sem apostas EV+ no Top 5 por enquanto.';
+          } else {
+            topGrid.innerHTML = top5.map(item => `
+              <div class="border border-border rounded-lg p-3 bg-[#0f1116]">
+                <div class="text-xs text-gray-400 mb-1">${item.city}</div>
+                <div class="text-xs text-gray-300 font-medium mb-1">${item.outcome}</div>
+                <div class="text-[11px] text-gray-400 mb-2">Preço: ${Number(item.price).toFixed(2)} | EV+: ${(Number(item.ev) * 100).toFixed(1)}% | σ ${Number(item.sigma).toFixed(1)} | prob ${(Number(item.prob) * 100).toFixed(1)}%</div>
+                <div class="text-[11px] text-muted mb-2">${item.explanation}</div>
+                <div class="flex items-center gap-2">
+                  <button type="button" class="btn-ev-buy px-2 py-1 text-xs bg-accent text-black rounded" data-token="${item.token_id || ''}">Comprar</button>
+                  <a href="${item.link}" target="_blank" rel="noopener" class="text-[11px] text-accent hover:underline">Abrir</a>
+                </div>
+              </div>
+            `).join('');
+            if (topStatus) topStatus.textContent = '';
+          }
         }
         grid.innerHTML = items.map(item => {
           if (item.status !== 'ok') {
@@ -1016,20 +1048,28 @@
               </div>
             `;
           }
+          const bets = item.bets || [];
+          const betsHtml = bets.map(b => `
+            <div class="border border-border/50 rounded-lg p-3 bg-[#0b0d12]">
+              <div class="text-xs text-gray-300 font-medium mb-1">${b.outcome}</div>
+              <div class="text-[11px] text-gray-400 mb-2">Preço: ${Number(b.price).toFixed(2)} | EV+: ${(Number(b.ev) * 100).toFixed(1)}% | σ ${Number(b.sigma).toFixed(1)} | prob ${(Number(b.prob) * 100).toFixed(1)}%</div>
+              <div class="text-[11px] text-muted mb-2">${b.explanation}</div>
+              <div class="flex items-center gap-2">
+                <button type="button" class="btn-ev-buy px-2 py-1 text-xs bg-accent text-black rounded" data-token="${b.token_id || ''}">Comprar</button>
+                <a href="${b.link}" target="_blank" rel="noopener" class="text-[11px] text-accent hover:underline">Abrir mercado</a>
+              </div>
+            </div>
+          `).join('');
           return `
             <div class="border border-border rounded-lg p-4 bg-[#0f1116]">
               <div class="text-sm text-gray-300 font-medium mb-1">${item.city}</div>
-              <div class="text-xs text-muted mb-2">${item.outcome}</div>
-              <div class="text-xs text-gray-400 mb-2">Preço: ${Number(item.price).toFixed(2)} | EV+: ${(Number(item.ev) * 100).toFixed(1)}%</div>
-              <div class="text-xs text-muted mb-3">${item.explanation}</div>
-              <div class="flex items-center gap-2">
-                <button type="button" class="btn-ev-buy px-3 py-1.5 text-sm bg-accent text-black rounded" data-token="${item.token_id || ''}">Comprar</button>
-                <a href="${item.link}" target="_blank" rel="noopener" class="text-xs text-accent hover:underline">Abrir mercado</a>
-              </div>
+              <div class="space-y-3">${betsHtml || '<div class="text-xs text-muted">Sem apostas EV+.</div>'}</div>
             </div>
           `;
         }).join('');
-        status.textContent = `Atualizado em ${new Date(data.updated_at).toLocaleString('pt-BR')}`;
+        const updatedText = `Atualizado em ${new Date(data.updated_at).toLocaleString('pt-BR')}`;
+        status.textContent = updatedText;
+        if (topMeta) topMeta.textContent = updatedText;
         document.querySelectorAll('.btn-ev-buy').forEach(btn => {
           btn.addEventListener('click', () => buyEvClima(btn.dataset.token || ''));
         });

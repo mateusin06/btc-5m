@@ -1886,6 +1886,7 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
     today_et = datetime.now(tz=tz)
     target_date = today_et + timedelta(days=1)
     items = []
+    top_candidates = []
     for city in CLIMA_CITIES:
         slug = _build_clima_slug(city["slug"], target_date)
         event = _get_event_by_slug_gamma(slug)
@@ -1902,31 +1903,55 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
         if not forecast:
             items.append({"city": city["name"], "slug": slug, "status": "no_forecast"})
             continue
-        best = None
+        candidates = []
         for m in markets:
             candidate = _best_ev_outcome_for_market(m, forecast)
-            if candidate and (best is None or candidate["ev"] > best["ev"]):
-                best = candidate
-        if not best:
+            if candidate and candidate.get("ev", 0) > 0:
+                explanation = (
+                    f"Max forecast {candidate['max_temp']:.1f} ({unit}) | sigma {candidate['sigma']:.1f} | "
+                    f"prob {candidate['prob']*100:.1f}% | EV {candidate['ev']*100:.1f}%"
+                )
+                candidate = dict(candidate)
+                candidate["explanation"] = explanation
+                candidate["link"] = f"https://polymarket.com/market/{candidate.get('market_slug')}"
+                candidates.append(candidate)
+        if not candidates:
             items.append({"city": city["name"], "slug": slug, "status": "no_ev"})
             continue
-        explanation = (
-            f"Max forecast {best['max_temp']:.1f} ({unit}) | sigma {best['sigma']:.1f} | "
-            f"prob {best['prob']*100:.1f}% | EV {best['ev']*100:.1f}%"
-        )
+        candidates.sort(key=lambda c: c["ev"], reverse=True)
+        top3 = candidates[:3]
         items.append({
             "city": city["name"],
             "slug": slug,
             "status": "ok",
-            "outcome": best["outcome"],
-            "price": best["price"],
-            "prob": best["prob"],
-            "ev": best["ev"],
-            "token_id": best["token_id"],
-            "explanation": explanation,
-            "link": f"https://polymarket.com/market/{best['market_slug']}",
+            "bets": [
+                {
+                    "outcome": c["outcome"],
+                    "price": c["price"],
+                    "prob": c["prob"],
+                    "ev": c["ev"],
+                    "sigma": c["sigma"],
+                    "token_id": c["token_id"],
+                    "explanation": c["explanation"],
+                    "link": c["link"],
+                }
+                for c in top3
+            ],
         })
-    payload = {"items": items, "updated_at": datetime.now(timezone.utc).isoformat()}
+        for c in candidates:
+            top_candidates.append({
+                "city": city["name"],
+                "outcome": c["outcome"],
+                "price": c["price"],
+                "prob": c["prob"],
+                "ev": c["ev"],
+                "sigma": c["sigma"],
+                "token_id": c["token_id"],
+                "explanation": c["explanation"],
+                "link": c["link"],
+            })
+    top5 = sorted(top_candidates, key=lambda c: (c["sigma"], -c["prob"]))[:5]
+    payload = {"items": items, "top5": top5, "updated_at": datetime.now(timezone.utc).isoformat()}
     _cache_set(_ev_clima_cache, "summary", payload)
     return payload
 
