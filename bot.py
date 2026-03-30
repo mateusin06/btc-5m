@@ -758,7 +758,7 @@ def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec:
             try:
                 ok_first = place_fok_order_at_price(client, token_first, bet_size, price_first)
             except Exception:
-                ok_first = _poly_has_recent_trade(client, token_first, 15)
+                ok_first = _poly_has_recent_trade(client, token_first, 8)
             if ok_first:
                 break
             time.sleep(ARB_POLY_POLL_INTERVAL)
@@ -788,7 +788,7 @@ def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec:
             try:
                 ok_second = place_fok_order_at_price(client, token_second, amount_second, price_other)
             except Exception:
-                ok_second = _poly_has_recent_trade(client, token_second, 15)
+                ok_second = _poly_has_recent_trade(client, token_second, 8)
             if ok_second:
                 profit_pct = (1.0 - (price_first + price_other)) * 100
                 print(f"  [{market.upper()}] Arb Poly: perna 2 executada @ {price_other:.2f} | lucro {profit_pct:.2f}%", flush=True)
@@ -813,7 +813,7 @@ def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec:
         try:
             ok_final = place_fok_order_at_price(client, token_second, amount_second, price_other)
         except Exception:
-            ok_final = _poly_has_recent_trade(client, token_second, 15)
+            ok_final = _poly_has_recent_trade(client, token_second, 8)
         if ok_final:
             break
         time.sleep(ARB_POLY_POLL_INTERVAL)
