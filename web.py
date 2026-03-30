@@ -1842,6 +1842,12 @@ def _kalshi_market_link(city: dict, ticker: str) -> str:
     return f"{prefix}{ticker.lower()}"
 
 
+def _kalshi_event_link(city: dict, date_obj: datetime) -> str:
+    prefix = city.get("url_prefix") or "https://kalshi.com/markets/"
+    event_ticker = _kalshi_event_ticker(city["series"], date_obj)
+    return f"{prefix}{event_ticker.lower()}"
+
+
 def _kalshi_best_ask(orderbook: dict, side: str) -> tuple[Optional[float], Optional[int]]:
     """Retorna (best_ask_price, max_count) para compra de YES/NO em Kalshi."""
     levels = (orderbook.get("orderbook_fp") or orderbook.get("orderbook") or {})
@@ -2270,7 +2276,22 @@ def ev_clima_kalshi_summary(user: dict = Depends(get_current_user)):
         for city in KALSHI_CLIMA_CITIES:
             try:
                 event_ticker = _kalshi_event_ticker(city["series"], target_date)
-                data = get_markets(api_key_id, private_key_pem, status="open", limit=200, series_ticker=city["series"])
+                data = None
+                for status_try in ("open", "active", None):
+                    try:
+                        data = get_markets(
+                            api_key_id,
+                            private_key_pem,
+                            status=status_try,
+                            limit=200,
+                            series_ticker=city["series"],
+                        )
+                        break
+                    except Exception:
+                        data = None
+                if not data:
+                    items.append({"city": city["name"], "status": "no_markets"})
+                    continue
                 markets = data.get("markets") or data.get("data") or []
                 markets = [m for m in markets if (m.get("event_ticker") or "").upper() == event_ticker]
                 if not markets:
@@ -2305,7 +2326,7 @@ def ev_clima_kalshi_summary(user: dict = Depends(get_current_user)):
                         )
                         candidate = dict(candidate)
                         candidate["explanation"] = explanation
-                        candidate["link"] = _kalshi_market_link(city, candidate.get("ticker") or "")
+                        candidate["link"] = _kalshi_event_link(city, target_date)
                         candidates.append(candidate)
 
                 if not candidates:
@@ -2324,27 +2345,27 @@ def ev_clima_kalshi_summary(user: dict = Depends(get_current_user)):
                             "prob": c["prob"],
                             "ev": c["ev"],
                             "sigma": c["sigma"],
-                            "side": c["side"],
-                            "ticker": c["ticker"],
-                            "explanation": c["explanation"],
-                            "link": c["link"],
-                        }
-                        for c in top3
-                    ],
-                })
-                for c in candidates:
-                    top_candidates.append({
-                        "city": city["name"],
-                        "outcome": c["outcome"],
-                        "price": c["price"],
-                        "prob": c["prob"],
-                        "ev": c["ev"],
-                        "sigma": c["sigma"],
                         "side": c["side"],
                         "ticker": c["ticker"],
                         "explanation": c["explanation"],
-                        "link": c["link"],
-                    })
+                        "link": _kalshi_event_link(city, target_date),
+                    }
+                    for c in top3
+                ],
+            })
+            for c in candidates:
+                top_candidates.append({
+                    "city": city["name"],
+                    "outcome": c["outcome"],
+                    "price": c["price"],
+                    "prob": c["prob"],
+                    "ev": c["ev"],
+                    "sigma": c["sigma"],
+                    "side": c["side"],
+                    "ticker": c["ticker"],
+                    "explanation": c["explanation"],
+                    "link": _kalshi_event_link(city, target_date),
+                })
             except Exception:
                 items.append({"city": city["name"], "status": "error"})
                 continue

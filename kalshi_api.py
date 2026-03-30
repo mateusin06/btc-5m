@@ -78,7 +78,7 @@ def get_balance(api_key_id: str, private_key_pem: str) -> float:
 def get_markets(
     api_key_id: str,
     private_key_pem: str,
-    status: str = "open",
+    status: Optional[str] = "open",
     limit: int = 200,
     cursor: str = "",
     series_ticker: str | None = None,
@@ -86,7 +86,9 @@ def get_markets(
     max_close_ts: int | None = None,
     tickers: str | None = None,
 ) -> dict:
-    params = {"status": status, "limit": limit}
+    params = {"limit": limit}
+    if status:
+        params["status"] = status
     if cursor:
         params["cursor"] = cursor
     if series_ticker:
