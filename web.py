@@ -1817,6 +1817,26 @@ def _kalshi_event_ticker(series: str, date_obj: datetime) -> str:
     return f"{series.upper()}-{_kalshi_date_code(date_obj)}"
 
 
+def _now_et() -> datetime:
+    try:
+        tz = ZoneInfo("America/New_York")
+        return datetime.now(tz=tz)
+    except Exception:
+        now_utc = datetime.now(timezone.utc)
+        year = now_utc.year
+
+        def _nth_weekday(year: int, month: int, weekday: int, n: int) -> datetime:
+            d = datetime(year, month, 1)
+            days = (weekday - d.weekday() + 7) % 7
+            return d + timedelta(days=days + 7 * (n - 1))
+
+        dst_start = _nth_weekday(year, 3, 6, 2)  # 2nd Sunday in March
+        dst_end = _nth_weekday(year, 11, 6, 1)   # 1st Sunday in November
+        is_dst = dst_start.date() <= now_utc.date() < dst_end.date()
+        offset = -4 if is_dst else -5
+        return now_utc.astimezone(timezone(timedelta(hours=offset)))
+
+
 def _kalshi_market_link(city: dict, ticker: str) -> str:
     prefix = city.get("url_prefix") or "https://kalshi.com/markets/"
     return f"{prefix}{ticker.lower()}"
@@ -2201,118 +2221,121 @@ def ev_clima_kalshi_summary(user: dict = Depends(get_current_user)):
         cached["from_cache"] = True
         return cached
 
-    row = _config_from_supabase(user["id"], user["_token"])
-    api_key_id = (row.get("kalshi_api_key") or "").strip()
-    private_key_pem = (row.get("kalshi_api_secret") or "").strip()
-    if not api_key_id or not private_key_pem:
-        items = [{"city": c["name"], "status": "no_kalshi_creds"} for c in KALSHI_CLIMA_CITIES]
-        payload = {"items": items, "top5": [], "updated_at": datetime.now(timezone.utc).isoformat()}
+    try:
+        row = _config_from_supabase(user["id"], user["_token"])
+        api_key_id = (row.get("kalshi_api_key") or "").strip()
+        private_key_pem = (row.get("kalshi_api_secret") or "").strip()
+        if not api_key_id or not private_key_pem:
+            items = [{"city": c["name"], "status": "no_kalshi_creds"} for c in KALSHI_CLIMA_CITIES]
+            payload = {"items": items, "top5": [], "updated_at": datetime.now(timezone.utc).isoformat()}
+            return payload
+
+        from kalshi_api import get_markets
+
+        today_et = _now_et()
+        target_date = today_et + timedelta(days=1)
+        items = []
+        top_candidates = []
+
+        for city in KALSHI_CLIMA_CITIES:
+            try:
+                event_ticker = _kalshi_event_ticker(city["series"], target_date)
+                data = get_markets(api_key_id, private_key_pem, status="open", limit=200, series_ticker=city["series"])
+                markets = data.get("markets") or data.get("data") or []
+                markets = [m for m in markets if (m.get("event_ticker") or "").upper() == event_ticker]
+                if not markets:
+                    items.append({"city": city["name"], "status": "no_markets"})
+                    continue
+
+                unit_texts = [(m.get("title") or m.get("yes_sub_title") or m.get("subtitle") or "") for m in markets]
+                unit = _detect_unit(unit_texts, "")
+                forecast = _forecast_max_and_sigma(city, unit, target_date)
+                if not forecast:
+                    items.append({"city": city["name"], "status": "no_forecast"})
+                    continue
+
+                candidates = []
+                for m in markets:
+                    candidate = _best_ev_outcome_for_kalshi_market(api_key_id, private_key_pem, m, forecast, unit)
+                    if candidate and candidate.get("ev", 0) > 0:
+                        price_val = float(candidate.get("price") or 0)
+                        prob_val = float(candidate.get("prob") or 0)
+                        sigma_val = float(candidate.get("sigma") or 0)
+                        if price_val < 0.20 or price_val > 0.97:
+                            continue
+                        if prob_val < 0.70:
+                            continue
+                        if sigma_val > 4.0:
+                            continue
+                        if candidate.get("ev", 0) < 0.05:
+                            continue
+                        explanation = (
+                            f"Max forecast {candidate['max_temp']:.1f} ({unit}) | sigma {candidate['sigma']:.1f} | "
+                            f"prob {candidate['prob']*100:.1f}% | EV {candidate['ev']*100:.1f}% | skew {candidate.get('skew', 0):+.2f}"
+                        )
+                        candidate = dict(candidate)
+                        candidate["explanation"] = explanation
+                        candidate["link"] = _kalshi_market_link(city, candidate.get("ticker") or "")
+                        candidates.append(candidate)
+
+                if not candidates:
+                    items.append({"city": city["name"], "status": "no_ev"})
+                    continue
+
+                candidates.sort(key=lambda c: c["ev"], reverse=True)
+                top3 = candidates[:3]
+                items.append({
+                    "city": city["name"],
+                    "status": "ok",
+                    "bets": [
+                        {
+                            "outcome": c["outcome"],
+                            "price": c["price"],
+                            "prob": c["prob"],
+                            "ev": c["ev"],
+                            "sigma": c["sigma"],
+                            "side": c["side"],
+                            "ticker": c["ticker"],
+                            "explanation": c["explanation"],
+                            "link": c["link"],
+                        }
+                        for c in top3
+                    ],
+                })
+                for c in candidates:
+                    top_candidates.append({
+                        "city": city["name"],
+                        "outcome": c["outcome"],
+                        "price": c["price"],
+                        "prob": c["prob"],
+                        "ev": c["ev"],
+                        "sigma": c["sigma"],
+                        "side": c["side"],
+                        "ticker": c["ticker"],
+                        "explanation": c["explanation"],
+                        "link": c["link"],
+                    })
+            except Exception:
+                items.append({"city": city["name"], "status": "error"})
+                continue
+
+        top5 = []
+        seen_cities = set()
+        for c in sorted(top_candidates, key=lambda c: (c["sigma"], -c["prob"])):
+            city_key = (c.get("city") or "").strip().lower()
+            if not city_key or city_key in seen_cities:
+                continue
+            seen_cities.add(city_key)
+            top5.append(c)
+            if len(top5) >= 5:
+                break
+
+        payload = {"items": items, "top5": top5, "updated_at": datetime.now(timezone.utc).isoformat()}
+        _cache_set(_ev_clima_cache, "summary_kalshi", payload)
         return payload
-
-    from kalshi_api import get_markets
-
-    tz = ZoneInfo("America/New_York")
-    today_et = datetime.now(tz=tz)
-    target_date = today_et + timedelta(days=1)
-    items = []
-    top_candidates = []
-
-    for city in KALSHI_CLIMA_CITIES:
-        event_ticker = _kalshi_event_ticker(city["series"], target_date)
-        try:
-            data = get_markets(api_key_id, private_key_pem, status="open", limit=200, series_ticker=city["series"])
-        except Exception:
-            items.append({"city": city["name"], "status": "no_markets"})
-            continue
-        markets = data.get("markets") or data.get("data") or []
-        markets = [m for m in markets if (m.get("event_ticker") or "").upper() == event_ticker]
-        if not markets:
-            items.append({"city": city["name"], "status": "no_markets"})
-            continue
-
-        unit_texts = [(m.get("title") or m.get("yes_sub_title") or m.get("subtitle") or "") for m in markets]
-        unit = _detect_unit(unit_texts, "")
-        forecast = _forecast_max_and_sigma(city, unit, target_date)
-        if not forecast:
-            items.append({"city": city["name"], "status": "no_forecast"})
-            continue
-
-        candidates = []
-        for m in markets:
-            candidate = _best_ev_outcome_for_kalshi_market(api_key_id, private_key_pem, m, forecast, unit)
-            if candidate and candidate.get("ev", 0) > 0:
-                price_val = float(candidate.get("price") or 0)
-                prob_val = float(candidate.get("prob") or 0)
-                sigma_val = float(candidate.get("sigma") or 0)
-                if price_val < 0.20 or price_val > 0.97:
-                    continue
-                if prob_val < 0.70:
-                    continue
-                if sigma_val > 4.0:
-                    continue
-                if candidate.get("ev", 0) < 0.05:
-                    continue
-                explanation = (
-                    f"Max forecast {candidate['max_temp']:.1f} ({unit}) | sigma {candidate['sigma']:.1f} | "
-                    f"prob {candidate['prob']*100:.1f}% | EV {candidate['ev']*100:.1f}% | skew {candidate.get('skew', 0):+.2f}"
-                )
-                candidate = dict(candidate)
-                candidate["explanation"] = explanation
-                candidate["link"] = _kalshi_market_link(city, candidate.get("ticker") or "")
-                candidates.append(candidate)
-
-        if not candidates:
-            items.append({"city": city["name"], "status": "no_ev"})
-            continue
-
-        candidates.sort(key=lambda c: c["ev"], reverse=True)
-        top3 = candidates[:3]
-        items.append({
-            "city": city["name"],
-            "status": "ok",
-            "bets": [
-                {
-                    "outcome": c["outcome"],
-                    "price": c["price"],
-                    "prob": c["prob"],
-                    "ev": c["ev"],
-                    "sigma": c["sigma"],
-                    "side": c["side"],
-                    "ticker": c["ticker"],
-                    "explanation": c["explanation"],
-                    "link": c["link"],
-                }
-                for c in top3
-            ],
-        })
-        for c in candidates:
-            top_candidates.append({
-                "city": city["name"],
-                "outcome": c["outcome"],
-                "price": c["price"],
-                "prob": c["prob"],
-                "ev": c["ev"],
-                "sigma": c["sigma"],
-                "side": c["side"],
-                "ticker": c["ticker"],
-                "explanation": c["explanation"],
-                "link": c["link"],
-            })
-
-    top5 = []
-    seen_cities = set()
-    for c in sorted(top_candidates, key=lambda c: (c["sigma"], -c["prob"])):
-        city_key = (c.get("city") or "").strip().lower()
-        if not city_key or city_key in seen_cities:
-            continue
-        seen_cities.add(city_key)
-        top5.append(c)
-        if len(top5) >= 5:
-            break
-
-    payload = {"items": items, "top5": top5, "updated_at": datetime.now(timezone.utc).isoformat()}
-    _cache_set(_ev_clima_cache, "summary_kalshi", payload)
-    return payload
+    except Exception:
+        items = [{"city": c["name"], "status": "error"} for c in KALSHI_CLIMA_CITIES]
+        return {"items": items, "top5": [], "updated_at": datetime.now(timezone.utc).isoformat()}
 
 
 def _gamma_sport_codes_by_category(category: str) -> list[str]:
