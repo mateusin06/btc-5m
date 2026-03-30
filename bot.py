@@ -757,7 +757,7 @@ def _run_poly_arb_cycle(config: Config, market: str) -> bool:
             try:
                 ok_first = place_fok_order_at_price(client, token_first, bet_size, price_first)
             except Exception:
-                ok_first = _poly_has_recent_trade(client, token_first, 30)
+                ok_first = _poly_has_recent_trade(client, token_first, 15)
             if ok_first:
                 break
             time.sleep(ARB_POLY_POLL_INTERVAL)
@@ -787,7 +787,7 @@ def _run_poly_arb_cycle(config: Config, market: str) -> bool:
             try:
                 ok_second = place_fok_order_at_price(client, token_second, amount_second, price_other)
             except Exception:
-                ok_second = _poly_has_recent_trade(client, token_second, 30)
+                ok_second = _poly_has_recent_trade(client, token_second, 15)
             if ok_second:
                 profit_pct = (1.0 - (price_first + price_other)) * 100
                 print(f"  [{market.upper()}] Arb Poly: perna 2 executada @ {price_other:.2f} | lucro {profit_pct:.2f}%", flush=True)
@@ -808,11 +808,11 @@ def _run_poly_arb_cycle(config: Config, market: str) -> bool:
         print(f"  [{market.upper()}] Arb Poly DRY: re-hedge final @ {price_other:.2f} | resultado {result_pct:.2f}%", flush=True)
         return True
     ok_final = False
-    for _ in range(ORDER_MAX_FOK_RETRIES):
+    while int(time.time()) < close_time - 10:
         try:
             ok_final = place_fok_order_at_price(client, token_second, amount_second, price_other)
         except Exception:
-            ok_final = _poly_has_recent_trade(client, token_second, 30)
+            ok_final = _poly_has_recent_trade(client, token_second, 15)
         if ok_final:
             break
         time.sleep(ARB_POLY_POLL_INTERVAL)
