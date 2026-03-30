@@ -687,7 +687,7 @@ def _find_kalshi_active_market(api_key_id: str, private_key_pem: str, series_tic
     return (best, best_close)
 
 
-def _run_poly_arb_cycle(config: Config, market: str) -> bool:
+def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec: int) -> bool:
     """Arbitragem apenas na Polymarket (BTC/ETH 15m).
     Compra a perna mais cara no início da janela e tenta hedge com lucro alvo.
     """
@@ -695,10 +695,11 @@ def _run_poly_arb_cycle(config: Config, market: str) -> bool:
 
     is_15m = market.endswith("15m")
     base_market = market.replace("15m", "") if is_15m else market
-    window_sec = WINDOW_SEC_15M if is_15m else WINDOW_SEC
-    window_ts = get_window_ts_15m() if is_15m else get_window_ts()
     close_time = window_ts + window_sec
     slug = f"{base_market}-updown-15m-{window_ts}" if is_15m else f"{market}-updown-5m-{window_ts}"
+    # Aguarda a janela abrir (evita repetir entrada perto do fechamento)
+    while int(time.time()) < window_ts:
+        time.sleep(1)
 
     event = get_market_by_slug(slug)
     tokens = extract_token_ids(event) if event else None
@@ -1329,7 +1330,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     if active_mode == "arb_kalshi":
         return _run_kalshi_arb_cycle(config, market)
     if active_mode == "arb_poly":
-        return _run_poly_arb_cycle(config, market)
+        return _run_poly_arb_cycle(config, market, window_ts, window_sec)
 
     while True:
         secs = seconds_until_close(window_ts, window_sec)
