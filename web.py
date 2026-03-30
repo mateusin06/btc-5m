@@ -1810,7 +1810,7 @@ def _best_ev_outcome_for_market(market: dict, forecast) -> Optional[dict]:
 
 
 def _kalshi_date_code(date_obj: datetime) -> str:
-    return date_obj.strftime("%d%b%y").upper()
+    return date_obj.strftime("%y%b%d").upper()
 
 
 def _kalshi_event_ticker(series: str, date_obj: datetime) -> str:
