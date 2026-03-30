@@ -700,6 +700,9 @@ def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec:
     # Aguarda a janela abrir (evita repetir entrada perto do fechamento)
     while int(time.time()) < window_ts:
         time.sleep(1)
+    # Aguarda 5s após abertura da janela antes da primeira perna
+    while int(time.time()) < window_ts + 5:
+        time.sleep(1)
 
     event = get_market_by_slug(slug)
     tokens = extract_token_ids(event) if event else None
