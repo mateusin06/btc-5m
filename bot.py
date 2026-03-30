@@ -491,6 +491,39 @@ def _poly_has_recent_trade(client, token_id: str, max_age_sec: int = 30) -> bool
     return False
 
 
+def _kalshi_has_recent_order(
+    api_key_id: str,
+    private_key_pem: str,
+    ticker: str,
+    side: str,
+    max_age_sec: int = 8,
+) -> bool:
+    try:
+        from kalshi_api import get_orders
+    except Exception:
+        return False
+    try:
+        now = int(time.time())
+        data = get_orders(api_key_id, private_key_pem, limit=20, ticker=ticker)
+        orders = data.get("orders") or data.get("data") or []
+        for o in orders:
+            oticker = (o.get("ticker") or o.get("order", {}).get("ticker") or "")
+            if oticker and oticker != ticker:
+                continue
+            oside = (o.get("side") or o.get("order", {}).get("side") or "").lower()
+            if oside and oside != side:
+                continue
+            status = (o.get("status") or o.get("order", {}).get("status") or "").lower()
+            if status and status not in ("executed", "filled", "matched", "complete", "completed", "settled", "success"):
+                continue
+            ts = _parse_trade_ts(o.get("created_time") or o.get("created_at") or o.get("timestamp"))
+            if ts and (now - ts) <= max_age_sec:
+                return True
+    except Exception:
+        return False
+    return False
+
+
 def place_limit_order(client, token_id: str, amount_usd: float) -> bool:
     from py_clob_client.clob_types import OrderArgs, OrderType
     from py_clob_client.order_builder.constants import BUY
@@ -688,70 +721,91 @@ def _find_kalshi_active_market(api_key_id: str, private_key_pem: str, series_tic
 
 
 def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec: int) -> bool:
-    """Arbitragem apenas na Polymarket (BTC/ETH 15m).
-    Compra a perna mais cara no início da janela e tenta hedge com lucro alvo.
-    """
-    from api import get_market_by_slug, extract_token_ids, get_token_price, get_token_price_from_event
+    """Arbitragem em 2 pernas na Kalshi (modo arb_poly)."""
+    api_key_id = (os.getenv("KALSHI_API_KEY_ID") or "").strip()
+    private_key_pem = (os.getenv("KALSHI_PRIVATE_KEY_PEM") or "").strip()
+    if not api_key_id or not private_key_pem:
+        print(f"  [{market.upper()}] Arb Kalshi: credenciais Kalshi ausentes.", flush=True)
+        return False
 
-    is_15m = market.endswith("15m")
-    base_market = market.replace("15m", "") if is_15m else market
-    close_time = window_ts + window_sec
-    slug = f"{base_market}-updown-15m-{window_ts}" if is_15m else f"{market}-updown-5m-{window_ts}"
-    # Aguarda a janela abrir (evita repetir entrada perto do fechamento)
+    try:
+        from kalshi_api import get_balance as kalshi_get_balance, get_orderbook, create_order
+    except Exception as e:
+        print(f"  [{market.upper()}] Arb Kalshi: erro ao carregar módulo Kalshi: {e!s}", flush=True)
+        return False
+
+    series = "KXBTC15M" if market.startswith("btc") else "KXETH15M"
+    kalshi_market, kalshi_close_ts = _find_kalshi_active_market(api_key_id, private_key_pem, series)
+    if not kalshi_market or not kalshi_close_ts:
+        print(f"  [{market.upper()}] Arb Kalshi: market 15m não encontrado na Kalshi.", flush=True)
+        return False
+    kalshi_ticker = kalshi_market.get("ticker")
+    if not kalshi_ticker:
+        print(f"  [{market.upper()}] Arb Kalshi: ticker Kalshi ausente.", flush=True)
+        return False
+
+    window_ts = kalshi_close_ts - WINDOW_SEC_15M
+    close_time = kalshi_close_ts
+
+    # Aguarda a janela abrir
     while int(time.time()) < window_ts:
         time.sleep(1)
     # Aguarda 5s após abertura da janela antes da primeira perna
     while int(time.time()) < window_ts + 5:
         time.sleep(1)
 
-    event = get_market_by_slug(slug)
-    tokens = extract_token_ids(event) if event else None
-    if not tokens or len(tokens) < 2:
-        print(f"  [{market.upper()}] Arb Poly: mercado não encontrado para slug {slug}.", flush=True)
-        return False
     if not config.arbitragem_bet_pct:
-        print(f"  [{market.upper()}] Arb Poly: % da banca não definida.", flush=True)
+        print(f"  [{market.upper()}] Arb Kalshi: % da banca não definida.", flush=True)
         return False
 
-    client = create_clob_client()
     try:
-        api_bankroll = get_bankroll_from_api(client) or config.bankroll
+        api_bankroll = kalshi_get_balance(api_key_id, private_key_pem) or config.bankroll
     except Exception:
         api_bankroll = config.bankroll
     bet_size = api_bankroll * config.arbitragem_bet_pct
-    bet_size = max(bet_size, config.min_bet, POLY_MIN_ORDER_USD)
+    bet_size = max(bet_size, config.min_bet)
     if bet_size > api_bankroll:
         bet_size = api_bankroll
-    if bet_size < POLY_MIN_ORDER_USD:
-        print(f"  [{market.upper()}] Arb Poly: aposta abaixo do mínimo (${POLY_MIN_ORDER_USD:.2f}).", flush=True)
+    if bet_size <= 0:
+        print(f"  [{market.upper()}] Arb Kalshi: aposta inválida.", flush=True)
         return False
 
-    price_up = get_token_price(tokens[0], "BUY") or get_token_price_from_event(event, "up")
-    price_down = get_token_price(tokens[1], "BUY") or get_token_price_from_event(event, "down")
-    if price_up is None or price_down is None:
-        print(f"  [{market.upper()}] Arb Poly: preços indisponíveis na abertura.", flush=True)
+    try:
+        orderbook = get_orderbook(api_key_id, private_key_pem, kalshi_ticker, depth=1)
+        yes_price, _ = _kalshi_best_ask(orderbook, "yes")
+        no_price, _ = _kalshi_best_ask(orderbook, "no")
+    except Exception as e:
+        print(f"  [{market.upper()}] Arb Kalshi: erro ao ler orderbook Kalshi: {e!s}", flush=True)
+        return False
+    if yes_price is None or no_price is None:
+        print(f"  [{market.upper()}] Arb Kalshi: preços indisponíveis na abertura.", flush=True)
         return False
 
-    if price_up >= price_down:
+    if yes_price >= no_price:
         first_side = "up"
-        token_first = tokens[0]
-        token_second = tokens[1]
-        price_first = price_up
-        price_second_now = price_down
+        kalshi_first_side = "yes"
+        kalshi_second_side = "no"
+        price_first = float(yes_price)
+        price_second_now = float(no_price)
     else:
         first_side = "down"
-        token_first = tokens[1]
-        token_second = tokens[0]
-        price_first = price_down
-        price_second_now = price_up
+        kalshi_first_side = "no"
+        kalshi_second_side = "yes"
+        price_first = float(no_price)
+        price_second_now = float(yes_price)
 
-    shares = bet_size / price_first if price_first else 0
-    if shares <= 0:
-        print(f"  [{market.upper()}] Arb Poly: falha ao calcular shares.", flush=True)
+    contracts = int(bet_size / price_first) if price_first else 0
+    if contracts <= 0:
+        print(f"  [{market.upper()}] Arb Kalshi: falha ao calcular contratos.", flush=True)
         return False
 
-    print(f"  [{market.upper()}] Arb Poly: perna 1 {first_side.upper()} @ {price_first:.2f} | aposta ${bet_size:.2f}", flush=True)
-    _tg_send(f"[{market.upper()}] Arb Poly: perna 1 {first_side.upper()} @ {price_first:.2f} | aposta ${bet_size:.2f}")
+    print(
+        f"  [{market.upper()}] Arb Kalshi: perna 1 {first_side.upper()} @ {price_first:.2f} | aposta ${bet_size:.2f}",
+        flush=True,
+    )
+    _tg_send(
+        f"[{market.upper()}] Arb Kalshi: perna 1 {first_side.upper()} @ {price_first:.2f} | aposta ${bet_size:.2f}"
+    )
 
     ok_first = False
     if config.dry_run:
@@ -759,73 +813,165 @@ def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec:
     else:
         for _ in range(ORDER_MAX_FOK_RETRIES):
             try:
-                ok_first = place_fok_order_at_price(client, token_first, bet_size, price_first)
+                resp = create_order(
+                    api_key_id,
+                    private_key_pem,
+                    kalshi_ticker,
+                    kalshi_first_side,
+                    contracts,
+                    price_first,
+                    time_in_force="fill_or_kill",
+                )
+                status = resp.get("status") or resp.get("order", {}).get("status")
+                if status:
+                    print(f"  [{market.upper()}] Arb Kalshi: Kalshi status {status}", flush=True)
+                ok_first = True
             except Exception:
-                ok_first = _poly_has_recent_trade(client, token_first, 8)
+                ok_first = _kalshi_has_recent_order(
+                    api_key_id,
+                    private_key_pem,
+                    kalshi_ticker,
+                    kalshi_first_side,
+                    8,
+                )
             if ok_first:
                 break
             time.sleep(ARB_POLY_POLL_INTERVAL)
     if not ok_first:
-        print(f"  [{market.upper()}] Arb Poly: falha na perna 1.", flush=True)
+        print(f"  [{market.upper()}] Arb Kalshi: falha na perna 1.", flush=True)
         return False
 
     _last_bet_window_by_market[market] = window_ts
     target_max_other = max(0.0, 1.0 - ARB_POLY_TARGET_PROFIT_PCT - price_first)
-    print(f"  [{market.upper()}] Arb Poly: alvo lucro {ARB_POLY_TARGET_PROFIT_PCT:.0%} | preço máximo perna 2 = {target_max_other:.2f}", flush=True)
-    _tg_send(f"[{market.upper()}] Arb Poly: alvo lucro {ARB_POLY_TARGET_PROFIT_PCT:.0%} | preço máximo perna 2 = {target_max_other:.2f}")
+    print(
+        f"  [{market.upper()}] Arb Kalshi: alvo lucro {ARB_POLY_TARGET_PROFIT_PCT:.0%} | "
+        f"preço máximo perna 2 = {target_max_other:.2f}",
+        flush=True,
+    )
+    _tg_send(
+        f"[{market.upper()}] Arb Kalshi: alvo lucro {ARB_POLY_TARGET_PROFIT_PCT:.0%} | "
+        f"preço máximo perna 2 = {target_max_other:.2f}"
+    )
 
     while int(time.time()) < close_time - ARB_POLY_FINAL_REHEDGE_SEC:
-        price_other = get_token_price(token_second, "BUY") or get_token_price_from_event(event, "down" if first_side == "up" else "up")
+        try:
+            orderbook = get_orderbook(api_key_id, private_key_pem, kalshi_ticker, depth=1)
+            price_other = _kalshi_best_ask(orderbook, kalshi_second_side)[0]
+        except Exception:
+            price_other = None
         if price_other is None:
             time.sleep(ARB_POLY_POLL_INTERVAL)
             continue
         if price_other <= target_max_other:
-            amount_second = shares * price_other
-            if amount_second < POLY_MIN_ORDER_USD:
-                print(f"  [{market.upper()}] Arb Poly: perna 2 abaixo do mínimo (${amount_second:.2f}).", flush=True)
+            amount_second = contracts * price_other
+            if amount_second < config.min_bet:
+                print(
+                    f"  [{market.upper()}] Arb Kalshi: perna 2 abaixo do mínimo (${amount_second:.2f}).",
+                    flush=True,
+                )
                 break
             if config.dry_run:
-                print(f"  [{market.upper()}] Arb Poly DRY: perna 2 @ {price_other:.2f} | lucro {(1-(price_first+price_other))*100:.2f}%", flush=True)
+                print(
+                    f"  [{market.upper()}] Arb Kalshi DRY: perna 2 @ {price_other:.2f} | "
+                    f"lucro {(1-(price_first+price_other))*100:.2f}%",
+                    flush=True,
+                )
                 return True
             ok_second = False
             try:
-                ok_second = place_fok_order_at_price(client, token_second, amount_second, price_other)
+                resp = create_order(
+                    api_key_id,
+                    private_key_pem,
+                    kalshi_ticker,
+                    kalshi_second_side,
+                    contracts,
+                    price_other,
+                    time_in_force="fill_or_kill",
+                )
+                status = resp.get("status") or resp.get("order", {}).get("status")
+                if status:
+                    print(f"  [{market.upper()}] Arb Kalshi: Kalshi status {status}", flush=True)
+                ok_second = True
             except Exception:
-                ok_second = _poly_has_recent_trade(client, token_second, 8)
+                ok_second = _kalshi_has_recent_order(
+                    api_key_id,
+                    private_key_pem,
+                    kalshi_ticker,
+                    kalshi_second_side,
+                    8,
+                )
             if ok_second:
                 profit_pct = (1.0 - (price_first + price_other)) * 100
-                print(f"  [{market.upper()}] Arb Poly: perna 2 executada @ {price_other:.2f} | lucro {profit_pct:.2f}%", flush=True)
-                _tg_send(f"[{market.upper()}] Arb Poly: perna 2 executada @ {price_other:.2f} | lucro {profit_pct:.2f}%")
+                print(
+                    f"  [{market.upper()}] Arb Kalshi: perna 2 executada @ {price_other:.2f} | "
+                    f"lucro {profit_pct:.2f}%",
+                    flush=True,
+                )
+                _tg_send(
+                    f"[{market.upper()}] Arb Kalshi: perna 2 executada @ {price_other:.2f} | lucro {profit_pct:.2f}%"
+                )
                 return True
         time.sleep(ARB_POLY_POLL_INTERVAL)
 
-    price_other = get_token_price(token_second, "BUY") or price_second_now
+    try:
+        orderbook = get_orderbook(api_key_id, private_key_pem, kalshi_ticker, depth=1)
+        price_other = _kalshi_best_ask(orderbook, kalshi_second_side)[0]
+    except Exception:
+        price_other = None
     if price_other is None:
-        print(f"  [{market.upper()}] Arb Poly: preço da perna 2 indisponível no re-hedge final.", flush=True)
+        print(f"  [{market.upper()}] Arb Kalshi: preço da perna 2 indisponível no re-hedge final.", flush=True)
         return False
-    amount_second = shares * price_other
-    if amount_second < POLY_MIN_ORDER_USD:
-        print(f"  [{market.upper()}] Arb Poly: perna 2 abaixo do mínimo no final (${amount_second:.2f}).", flush=True)
+    amount_second = contracts * price_other
+    if amount_second < config.min_bet:
+        print(f"  [{market.upper()}] Arb Kalshi: perna 2 abaixo do mínimo no final (${amount_second:.2f}).", flush=True)
         return False
     if config.dry_run:
         result_pct = (1.0 - (price_first + price_other)) * 100
-        print(f"  [{market.upper()}] Arb Poly DRY: re-hedge final @ {price_other:.2f} | resultado {result_pct:.2f}%", flush=True)
+        print(
+            f"  [{market.upper()}] Arb Kalshi DRY: re-hedge final @ {price_other:.2f} | "
+            f"resultado {result_pct:.2f}%",
+            flush=True,
+        )
         return True
     ok_final = False
     while int(time.time()) < close_time - 10:
         try:
-            ok_final = place_fok_order_at_price(client, token_second, amount_second, price_other)
+            resp = create_order(
+                api_key_id,
+                private_key_pem,
+                kalshi_ticker,
+                kalshi_second_side,
+                contracts,
+                price_other,
+                time_in_force="fill_or_kill",
+            )
+            status = resp.get("status") or resp.get("order", {}).get("status")
+            if status:
+                print(f"  [{market.upper()}] Arb Kalshi: Kalshi status {status}", flush=True)
+            ok_final = True
         except Exception:
-            ok_final = _poly_has_recent_trade(client, token_second, 8)
+            ok_final = _kalshi_has_recent_order(
+                api_key_id,
+                private_key_pem,
+                kalshi_ticker,
+                kalshi_second_side,
+                8,
+            )
         if ok_final:
             break
         time.sleep(ARB_POLY_POLL_INTERVAL)
     if ok_final:
         result_pct = (1.0 - (price_first + price_other)) * 100
-        print(f"  [{market.upper()}] Arb Poly: re-hedge final executado @ {price_other:.2f} | resultado {result_pct:.2f}%", flush=True)
-        _tg_send(f"[{market.upper()}] Arb Poly: re-hedge final executado @ {price_other:.2f} | resultado {result_pct:.2f}%")
+        print(
+            f"  [{market.upper()}] Arb Kalshi: re-hedge final executado @ {price_other:.2f} | "
+            f"resultado {result_pct:.2f}%",
+            flush=True,
+        )
+        _tg_send(
+            f"[{market.upper()}] Arb Kalshi: re-hedge final executado @ {price_other:.2f} | resultado {result_pct:.2f}%"
+        )
         return True
-    print(f"  [{market.upper()}] Arb Poly: falha ao executar re-hedge final.", flush=True)
+    print(f"  [{market.upper()}] Arb Kalshi: falha ao executar re-hedge final.", flush=True)
     return False
 
 
@@ -1196,6 +1342,10 @@ def _run_kalshi_arb_cycle(config: Config, market: str) -> bool:
                 break
             except Exception as e:
                 last_err = e
+                if _kalshi_has_recent_order(api_key_id, private_key_pem, kalshi_ticker, kalshi_side, 8):
+                    print(f"  [{market.upper()}] Arb Kalshi: ordem Kalshi confirmada após erro.", flush=True)
+                    kalshi_ok = True
+                    break
                 print(
                     f"  [{market.upper()}] Arb Kalshi: tentativa {attempt} falhou ({e!s}), tentando novamente...",
                     flush=True,
@@ -1308,7 +1458,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         print(f"  [{market.upper()}] Arb Kalshi: mercado inválido (use BTC15m/ETH15m).", flush=True)
         return False
     if active_mode == "arb_poly" and not is_15m:
-        print(f"  [{market.upper()}] Arb Poly: mercado inválido (use BTC15m/ETH15m).", flush=True)
+        print(f"  [{market.upper()}] Arb Kalshi: mercado inválido (use BTC15m/ETH15m).", flush=True)
         return False
     # Safe/aggressive: BTC-ETH 5m = desde 2 min até 40s; BTC 15m = desde 5 min até 40s
     monitor_secs = (
@@ -2371,7 +2521,7 @@ def main():
     if config.mode == "multi_confirm":
         print("MC+RD: Multi-Confirmacao + Regime + Divergencia | min conf 40% | min confs 3/6 | entra apenas com EV+", flush=True)
     if config.mode == "arb_poly":
-        print(f"ARB POLY: perna 1 no início da janela | alvo lucro {ARB_POLY_TARGET_PROFIT_PCT:.0%} | re-hedge final a 3 min do close", flush=True)
+        print(f"ARB KALSHI: perna 1 no início da janela | alvo lucro {ARB_POLY_TARGET_PROFIT_PCT:.0%} | re-hedge final a 3 min do close", flush=True)
     if config.mode == "only_hedge_plus":
         print(f"Only Hedge+: entrada fixa ${config.fixed_bet_only_hedge or config.min_bet:.2f} | só entra com EV+", flush=True)
     if config.mode == "odd_master":

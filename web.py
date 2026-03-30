@@ -965,11 +965,11 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
                     status_code=400,
                     detail="Modo Arbitragem exige % da banca (1–100) na Config ou no envio.",
                 )
-        if mode == "arb_kalshi":
+        if mode in ("arb_kalshi", "arb_poly"):
             if not row.get("kalshi_api_key") or not row.get("kalshi_api_secret"):
                 raise HTTPException(
                     status_code=400,
-                    detail="Salve suas credenciais Kalshi (API Key ID e Private Key) na aba Config antes de iniciar o modo Arb Kalshi.",
+                    detail="Salve suas credenciais Kalshi (API Key ID e Private Key) na aba Config antes de iniciar este modo.",
                 )
 
     env = os.environ.copy()
@@ -990,7 +990,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     env["MAX_TOKEN_PRICE"] = str(row.get("max_token_price", 0.9))
     env["ARB_MIN_PROFIT_PCT"] = str(row.get("arb_min_profit_pct", 0.04))
     env["BOT_MARKETS"] = ",".join(markets_list)
-    if mode == "arb_kalshi":
+    if mode in ("arb_kalshi", "arb_poly"):
         env["KALSHI_API_KEY_ID"] = row.get("kalshi_api_key", "")
         env["KALSHI_PRIVATE_KEY_PEM"] = row.get("kalshi_api_secret", "")
         env["KALSHI_ALIGN_PTB"] = "1" if row.get("kalshi_align_ptb") else "0"
@@ -1453,6 +1453,10 @@ def _parse_range(text: str) -> tuple[Optional[float], Optional[float]]:
             nums.append(float(cleaned))
         except Exception:
             pass
+    if any(k in t for k in ("below", "under", "less than")):
+        return (None, nums[0] if nums else None)
+    if any(k in t for k in ("above", "over", "greater than")):
+        return (nums[0] if nums else None, None)
     if "or higher" in t or "+" in t or ">=" in t or "at least" in t:
         return (nums[0] if nums else None, None)
     if "or lower" in t or "<=" in t or "at most" in t:
@@ -2298,8 +2302,7 @@ def ev_clima_kalshi_summary(user: dict = Depends(get_current_user)):
                     items.append({"city": city["name"], "status": "no_markets"})
                     continue
 
-                unit_texts = [(m.get("title") or m.get("yes_sub_title") or m.get("subtitle") or "") for m in markets]
-                unit = _detect_unit(unit_texts, "")
+                unit = "fahrenheit"
                 forecast = _forecast_max_and_sigma(city, unit, target_date)
                 if not forecast:
                     items.append({"city": city["name"], "status": "no_forecast"})

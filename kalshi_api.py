@@ -133,3 +133,21 @@ def create_order(
     else:
         payload["no_price_dollars"] = price_str
     return kalshi_post(api_key_id, private_key_pem, "/portfolio/orders", payload)
+
+
+def get_orders(
+    api_key_id: str,
+    private_key_pem: str,
+    limit: int = 50,
+    cursor: str = "",
+    ticker: str | None = None,
+    status: str | None = None,
+) -> dict:
+    params: dict[str, Any] = {"limit": limit}
+    if cursor:
+        params["cursor"] = cursor
+    if ticker:
+        params["ticker"] = ticker
+    if status:
+        params["status"] = status
+    return kalshi_get(api_key_id, private_key_pem, "/portfolio/orders", params=params)
