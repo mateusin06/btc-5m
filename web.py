@@ -1842,6 +1842,36 @@ def _kalshi_market_link(city: dict, ticker: str) -> str:
     return f"{prefix}{ticker.lower()}"
 
 
+def _kalshi_best_ask(orderbook: dict, side: str) -> tuple[Optional[float], Optional[int]]:
+    """Retorna (best_ask_price, max_count) para compra de YES/NO em Kalshi."""
+    levels = (orderbook.get("orderbook_fp") or orderbook.get("orderbook") or {})
+    yes_bids = levels.get("yes_dollars") or []
+    no_bids = levels.get("no_dollars") or []
+    # Legacy fallback (centavos): pode vir como "yes"/"no"
+    if not yes_bids and not no_bids:
+        yes_bids = levels.get("yes") or []
+        no_bids = levels.get("no") or []
+    if side == "yes":
+        if not no_bids:
+            return (None, None)
+        best_no_bid = max(no_bids, key=lambda x: float(x[0]))
+        bid = float(best_no_bid[0])
+        if bid > 1.0:
+            bid = bid / 100.0
+        price = 1.0 - bid
+        size = int(float(best_no_bid[1]))
+        return (max(price, 0.01), max(size, 0))
+    if not yes_bids:
+        return (None, None)
+    best_yes_bid = max(yes_bids, key=lambda x: float(x[0]))
+    bid = float(best_yes_bid[0])
+    if bid > 1.0:
+        bid = bid / 100.0
+    price = 1.0 - bid
+    size = int(float(best_yes_bid[1]))
+    return (max(price, 0.01), max(size, 0))
+
+
 def _best_ev_outcome_for_kalshi_market(
     api_key_id: str,
     private_key_pem: str,
