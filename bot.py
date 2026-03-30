@@ -691,7 +691,7 @@ def _run_poly_arb_cycle(config: Config, market: str) -> bool:
     """Arbitragem apenas na Polymarket (BTC/ETH 15m).
     Compra a perna mais cara no início da janela e tenta hedge com lucro alvo.
     """
-    from api import get_market_by_slug, extract_token_ids, get_token_price, get_token_price_from_event, get_bankroll_from_api
+    from api import get_market_by_slug, extract_token_ids, get_token_price, get_token_price_from_event
 
     is_15m = market.endswith("15m")
     base_market = market.replace("15m", "") if is_15m else market
