@@ -915,7 +915,6 @@ def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec:
     if price_other is None:
         print(f"  [{market.upper()}] Arb Kalshi: preço da perna 2 indisponível no re-hedge final.", flush=True)
         return False
-    amount_second = contracts * price_other
     if config.dry_run:
         result_pct = (1.0 - (price_first + price_other)) * 100
         print(
@@ -924,15 +923,37 @@ def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec:
             flush=True,
         )
         return True
+
     ok_final = False
+    final_price = None
+    final_contracts = 0
     while int(time.time()) < close_time - 10:
+        try:
+            orderbook = get_orderbook(api_key_id, private_key_pem, kalshi_ticker, depth=1)
+            price_other = _kalshi_best_ask(orderbook, kalshi_second_side)[0]
+        except Exception:
+            price_other = None
+        if price_other is None:
+            time.sleep(ARB_POLY_POLL_INTERVAL)
+            continue
+
+        try:
+            api_bankroll = kalshi_get_balance(api_key_id, private_key_pem) or config.bankroll
+        except Exception:
+            api_bankroll = config.bankroll
+        max_affordable = int(api_bankroll / price_other) if price_other else 0
+        contracts_final = min(contracts, max_affordable)
+        if contracts_final <= 0:
+            print(f"  [{market.upper()}] Arb Kalshi: saldo insuficiente no re-hedge final.", flush=True)
+            return False
+
         try:
             resp = create_order(
                 api_key_id,
                 private_key_pem,
                 kalshi_ticker,
                 kalshi_second_side,
-                contracts,
+                contracts_final,
                 price_other,
                 time_in_force="fill_or_kill",
             )
@@ -949,19 +970,27 @@ def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec:
                 8,
             )
         if ok_final:
+            final_price = price_other
+            final_contracts = contracts_final
             break
         time.sleep(ARB_POLY_POLL_INTERVAL)
-    if ok_final:
-        result_pct = (1.0 - (price_first + price_other)) * 100
+
+    if ok_final and final_price is not None and final_contracts > 0:
+        cost_total = (contracts * price_first) + (final_contracts * final_price)
+        profit_first = contracts - cost_total
+        profit_second = final_contracts - cost_total
+        worst_profit = min(profit_first, profit_second)
+        result_pct = (worst_profit / cost_total) * 100 if cost_total > 0 else 0.0
         print(
-            f"  [{market.upper()}] Arb Kalshi: re-hedge final executado @ {price_other:.2f} | "
+            f"  [{market.upper()}] Arb Kalshi: re-hedge final executado @ {final_price:.2f} | "
             f"resultado {result_pct:.2f}%",
             flush=True,
         )
         _tg_send(
-            f"[{market.upper()}] Arb Kalshi: re-hedge final executado @ {price_other:.2f} | resultado {result_pct:.2f}%"
+            f"[{market.upper()}] Arb Kalshi: re-hedge final executado @ {final_price:.2f} | resultado {result_pct:.2f}%"
         )
         return True
+
     print(f"  [{market.upper()}] Arb Kalshi: falha ao executar re-hedge final.", flush=True)
     return False
 
