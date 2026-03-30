@@ -319,6 +319,7 @@
               <option value="moon">MOON — CVD (divergência + momentum) com mão fixa safe</option>
               <option value="multi_confirm">Multi-Confirmação + Regime + Divergência (sinais)</option>
               <option value="arb_kalshi">Arb Kalshi — Polymarket vs Kalshi (BTC/ETH 15min)</option>
+              <option value="arb_poly">Arb Poly — 2 pernas na Polymarket (BTC/ETH 15min)</option>
             </select>
           </div>
           <div id="wrap-safe-bet" class="hidden">
@@ -994,7 +995,7 @@
     function updateBotModeUi() {
       const v = botMode.value;
       getEl('wrap-safe-bet').classList.toggle('hidden', !['spike_ai','moon','multi_confirm'].includes(v));
-      getEl('wrap-arbitragem-pct').classList.toggle('hidden', v !== 'arb_kalshi');
+      getEl('wrap-arbitragem-pct').classList.toggle('hidden', !['arb_kalshi','arb_poly'].includes(v));
     }
     botMode.addEventListener('change', updateBotModeUi);
     updateBotModeUi();

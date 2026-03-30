@@ -408,7 +408,7 @@ class ConfigUpdate(BaseModel):
     telegram_chat_id: Optional[str] = None
     starting_bankroll: Optional[float] = None
     min_bet: Optional[float] = None
-    bot_mode: Optional[Literal["safe", "spike_ai", "moon", "multi_confirm", "aggressive", "degen", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"]] = None
+    bot_mode: Optional[Literal["safe", "spike_ai", "moon", "multi_confirm", "aggressive", "degen", "arbitragem", "arb_kalshi", "arb_poly", "only_hedge_plus", "odd_master", "90_95"]] = None
     aggressive_bet_pct: Optional[float] = None
     max_token_price: Optional[float] = None
     arb_min_profit_pct: Optional[float] = None
@@ -447,7 +447,7 @@ class ConfigResponse(BaseModel):
 
 
 class BotStartRequest(BaseModel):
-    mode: Literal["safe", "spike_ai", "moon", "multi_confirm", "aggressive", "dry_run", "arbitragem", "arb_kalshi", "only_hedge_plus", "odd_master", "90_95"] = Field(..., description="Modo de trading")
+    mode: Literal["safe", "spike_ai", "moon", "multi_confirm", "aggressive", "dry_run", "arbitragem", "arb_kalshi", "arb_poly", "only_hedge_plus", "odd_master", "90_95"] = Field(..., description="Modo de trading")
     dry_run: bool = Field(False, description="Se True, simula sem ordens reais")
     markets: List[Literal["btc", "eth", "btc15m", "eth15m"]] = Field(default=["btc"], description="Mercados: btc, eth, btc15m, eth15m (lista)")
     safe_bet: Optional[float] = None
@@ -891,7 +891,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         )
     markets_list = req.markets if isinstance(req.markets, list) else [s.strip() for s in str(req.markets).split(",") if s.strip()]
     markets_list = [m for m in markets_list if m in ("btc", "eth", "btc15m", "eth15m")]
-    if mode == "arb_kalshi":
+    if mode in ("arb_kalshi", "arb_poly"):
         markets_list = [m for m in markets_list if m in ("btc15m", "eth15m")]
     elif mode == "multi_confirm":
         markets_list = [m for m in markets_list if m in ("btc", "eth", "btc15m", "eth15m")]
@@ -935,7 +935,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
                     status_code=400,
                     detail=f"Modo 90-95 exige valor de aposta (Config ou envio). Mínimo: ${min_bet:.2f}.",
                 )
-        if mode in ("arbitragem", "arb_kalshi"):
+        if mode in ("arbitragem", "arb_kalshi", "arb_poly"):
             arb_pct = req.arbitragem_pct if req.arbitragem_pct is not None else (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))
             if arb_pct is None or arb_pct < 1 or arb_pct > 100:
                 raise HTTPException(
@@ -1012,7 +1012,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
             start_config["odd_master_bet"] = req.odd_master_bet if req.odd_master_bet is not None else float(row["odd_master_bet"])
         if mode == "90_95" and (req.bet_90_95 is not None or (row.get("bet_90_95") and float(row["bet_90_95"]))):
             start_config["bet_90_95"] = req.bet_90_95 if req.bet_90_95 is not None else float(row["bet_90_95"])
-        if mode in ("arbitragem", "arb_kalshi") and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
+        if mode in ("arbitragem", "arb_kalshi", "arb_poly") and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
             start_config["arbitragem_pct"] = int(req.arbitragem_pct if req.arbitragem_pct is not None else float(row["arbitragem_pct"]))
         _config_to_supabase(user_id, user["_token"], start_config, user.get("email"))
     except Exception:
@@ -1037,7 +1037,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         bet = req.bet_90_95 if req.bet_90_95 is not None else row.get("bet_90_95")
         if bet is not None:
             cmd.extend(["--bet-90-95", str(bet)])
-    if mode in ("arbitragem", "arb_kalshi"):
+    if mode in ("arbitragem", "arb_kalshi", "arb_poly"):
         pct = req.arbitragem_pct if req.arbitragem_pct is not None else row.get("arbitragem_pct")
         if pct is not None:
             cmd.extend(["--arbitragem-pct", str(int(pct))])
@@ -1061,7 +1061,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
         elif mode == "90_95" and (req.bet_90_95 is not None or (row.get("bet_90_95") and float(row["bet_90_95"]))):
             bet = req.bet_90_95 if req.bet_90_95 is not None else float(row["bet_90_95"])
             extra = f" bet_90_95=${bet:.2f}"
-        elif mode in ("arbitragem", "arb_kalshi") and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
+        elif mode in ("arbitragem", "arb_kalshi", "arb_poly") and (req.arbitragem_pct is not None or (row.get("arbitragem_pct") and float(row["arbitragem_pct"]))):
             pct = req.arbitragem_pct if req.arbitragem_pct is not None else float(row["arbitragem_pct"])
             extra = f" arbitragem_pct={int(round(pct))}%"
         with open(log_path, "w", encoding="utf-8") as log_file:
