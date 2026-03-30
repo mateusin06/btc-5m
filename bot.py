@@ -864,12 +864,6 @@ def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec:
             continue
         if price_other <= target_max_other:
             amount_second = contracts * price_other
-            if amount_second < config.min_bet:
-                print(
-                    f"  [{market.upper()}] Arb Kalshi: perna 2 abaixo do mínimo (${amount_second:.2f}).",
-                    flush=True,
-                )
-                break
             if config.dry_run:
                 print(
                     f"  [{market.upper()}] Arb Kalshi DRY: perna 2 @ {price_other:.2f} | "
@@ -922,9 +916,6 @@ def _run_poly_arb_cycle(config: Config, market: str, window_ts: int, window_sec:
         print(f"  [{market.upper()}] Arb Kalshi: preço da perna 2 indisponível no re-hedge final.", flush=True)
         return False
     amount_second = contracts * price_other
-    if amount_second < config.min_bet:
-        print(f"  [{market.upper()}] Arb Kalshi: perna 2 abaixo do mínimo no final (${amount_second:.2f}).", flush=True)
-        return False
     if config.dry_run:
         result_pct = (1.0 - (price_first + price_other)) * 100
         print(
