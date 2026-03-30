@@ -2345,27 +2345,27 @@ def ev_clima_kalshi_summary(user: dict = Depends(get_current_user)):
                             "prob": c["prob"],
                             "ev": c["ev"],
                             "sigma": c["sigma"],
+                            "side": c["side"],
+                            "ticker": c["ticker"],
+                            "explanation": c["explanation"],
+                            "link": _kalshi_event_link(city, target_date),
+                        }
+                        for c in top3
+                    ],
+                })
+                for c in candidates:
+                    top_candidates.append({
+                        "city": city["name"],
+                        "outcome": c["outcome"],
+                        "price": c["price"],
+                        "prob": c["prob"],
+                        "ev": c["ev"],
+                        "sigma": c["sigma"],
                         "side": c["side"],
                         "ticker": c["ticker"],
                         "explanation": c["explanation"],
                         "link": _kalshi_event_link(city, target_date),
-                    }
-                    for c in top3
-                ],
-            })
-            for c in candidates:
-                top_candidates.append({
-                    "city": city["name"],
-                    "outcome": c["outcome"],
-                    "price": c["price"],
-                    "prob": c["prob"],
-                    "ev": c["ev"],
-                    "sigma": c["sigma"],
-                    "side": c["side"],
-                    "ticker": c["ticker"],
-                    "explanation": c["explanation"],
-                    "link": _kalshi_event_link(city, target_date),
-                })
+                    })
             except Exception:
                 items.append({"city": city["name"], "status": "error"})
                 continue
