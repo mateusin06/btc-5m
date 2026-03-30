@@ -100,6 +100,29 @@ CLIMA_CITIES = [
     {"name": "Houston", "slug": "houston"},
     {"name": "Austin", "slug": "austin"},
 ]
+
+KALSHI_CLIMA_CITIES = [
+    {"name": "Los Angeles", "series": "KXHIGHLAX", "url_prefix": "https://kalshi.com/markets/kxhighlax/highest-temperature-in-los-angeles/"},
+    {"name": "NYC", "series": "KXHIGHNY", "url_prefix": "https://kalshi.com/markets/kxhighny/highest-temperature-in-nyc/"},
+    {"name": "Miami", "series": "KXHIGHMIA", "url_prefix": "https://kalshi.com/markets/kxhighmia/highest-temperature-in-miami/"},
+    {"name": "Chicago", "series": "KXHIGHCHI", "url_prefix": "https://kalshi.com/markets/kxhighchi/highest-temperature-in-chicago/"},
+    {"name": "Philadelphia", "series": "KXHIGHPHIL", "url_prefix": "https://kalshi.com/markets/kxhighphil/highest-temperature-in-philadelphia/"},
+    {"name": "Washington DC", "series": "KXHIGHTDC", "url_prefix": "https://kalshi.com/markets/kxhightdc/washington-dc-daily-max-temp/"},
+    {"name": "Atlanta", "series": "KXHIGHTATL", "url_prefix": "https://kalshi.com/markets/kxhightatl/atlanta-max-temperature/"},
+    {"name": "Austin", "series": "KXHIGHAUS", "url_prefix": "https://kalshi.com/markets/kxhighaus/highest-temperature-in-austin/"},
+    {"name": "Boston", "series": "KXHIGHTBOS", "url_prefix": "https://kalshi.com/markets/kxhightbos/boston-maximum-daily-temperature/"},
+    {"name": "Denver", "series": "KXHIGHTDEN", "url_prefix": "https://kalshi.com/markets/kxhighden/highest-temperature-in-denver/"},
+    {"name": "Phoenix", "series": "KXHIGHTPHX", "url_prefix": "https://kalshi.com/markets/kxhightphx/phoenix-high-temperature-daily/"},
+    {"name": "Minneapolis", "series": "KXHIGHTMIN", "url_prefix": "https://kalshi.com/markets/kxhightmin/minneapolis-daily-high-temperature/"},
+    {"name": "Dallas", "series": "KXHIGHTDAL", "url_prefix": "https://kalshi.com/markets/kxhightdal/dallas-maximum-temperature/"},
+    {"name": "San Francisco", "series": "KXHIGHTSFO", "url_prefix": "https://kalshi.com/markets/kxhightsfo/san-francisco-high-temperature-daily/"},
+    {"name": "Oklahoma City", "series": "KXHIGHTOKC", "url_prefix": "https://kalshi.com/markets/kxhightokc/oklahoma-city-maximum-high-temperature/"},
+    {"name": "Las Vegas", "series": "KXHIGHTLV", "url_prefix": "https://kalshi.com/markets/kxhightlv/las-vegas-max-daily-temperature/"},
+    {"name": "Seattle", "series": "KXHIGHTSEA", "url_prefix": "https://kalshi.com/markets/kxhightsea/seattle-maximum-temperature-daily/"},
+    {"name": "San Antonio", "series": "KXHIGHTSATX", "url_prefix": "https://kalshi.com/markets/kxhightsatx/san-antonio-daily-maximum-temperature/"},
+    {"name": "New Orleans", "series": "KXHIGHTNOLA", "url_prefix": "https://kalshi.com/markets/kxhightnola/new-orleans-max-temp-daily/"},
+    {"name": "Houston", "series": "KXHIGHTHOU", "url_prefix": "https://kalshi.com/markets/kxhighthou/daily-high-temperature-houston/"},
+]
 PAYMENT_WALLET = "0x17Ddf5d22fCF360E8D0dAED4e83717aeb1d47836"
 
 CLOB_HOST = "https://clob.polymarket.com"
@@ -1786,6 +1809,71 @@ def _best_ev_outcome_for_market(market: dict, forecast) -> Optional[dict]:
     return max(candidates, key=lambda x: x["ev"])
 
 
+def _kalshi_date_code(date_obj: datetime) -> str:
+    return date_obj.strftime("%d%b%y").upper()
+
+
+def _kalshi_event_ticker(series: str, date_obj: datetime) -> str:
+    return f"{series.upper()}-{_kalshi_date_code(date_obj)}"
+
+
+def _kalshi_market_link(city: dict, ticker: str) -> str:
+    prefix = city.get("url_prefix") or "https://kalshi.com/markets/"
+    return f"{prefix}{ticker.lower()}"
+
+
+def _best_ev_outcome_for_kalshi_market(
+    api_key_id: str,
+    private_key_pem: str,
+    market: dict,
+    forecast: dict,
+    unit: str,
+) -> Optional[dict]:
+    from kalshi_api import get_orderbook
+
+    title = market.get("title") or market.get("yes_sub_title") or market.get("subtitle") or ""
+    low, high = _parse_range(title)
+    if low is None and high is None:
+        return None
+    prob_yes = _range_prob(low, high, forecast.get("max_temp"), forecast.get("sigma"), forecast.get("skew", 0.0))
+    prob_no = 1.0 - prob_yes
+
+    try:
+        orderbook = get_orderbook(api_key_id, private_key_pem, market.get("ticker"), depth=1)
+    except Exception:
+        return None
+    yes_price, _ = _kalshi_best_ask(orderbook, "yes")
+    no_price, _ = _kalshi_best_ask(orderbook, "no")
+    candidates = []
+    if yes_price is not None:
+        candidates.append({
+            "outcome": f"YES — {title}",
+            "price": float(yes_price),
+            "prob": prob_yes,
+            "ev": prob_yes - float(yes_price),
+            "side": "yes",
+            "ticker": market.get("ticker"),
+            "max_temp": forecast.get("max_temp"),
+            "sigma": forecast.get("sigma"),
+            "skew": forecast.get("skew", 0.0),
+        })
+    if no_price is not None:
+        candidates.append({
+            "outcome": f"NO — {title}",
+            "price": float(no_price),
+            "prob": prob_no,
+            "ev": prob_no - float(no_price),
+            "side": "no",
+            "ticker": market.get("ticker"),
+            "max_temp": forecast.get("max_temp"),
+            "sigma": forecast.get("sigma"),
+            "skew": forecast.get("skew", 0.0),
+        })
+    if not candidates:
+        return None
+    return max(candidates, key=lambda x: x["ev"])
+
+
 def _normalize_team_name(name: str) -> str:
     t = re.sub(r"[^a-z0-9 ]", " ", (name or "").lower())
     stop = {"fc", "cf", "sc", "club", "team", "esports", "e-sports", "the"}
@@ -2102,6 +2190,128 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
             break
     payload = {"items": items, "top5": top5, "updated_at": datetime.now(timezone.utc).isoformat()}
     _cache_set(_ev_clima_cache, "summary", payload)
+    return payload
+
+
+@app.get("/api/ev-clima-kalshi/summary")
+def ev_clima_kalshi_summary(user: dict = Depends(get_current_user)):
+    cached = _cache_get(_ev_clima_cache, "summary_kalshi", 30 * 60)
+    if cached is not None:
+        cached = dict(cached)
+        cached["from_cache"] = True
+        return cached
+
+    row = _config_from_supabase(user["id"], user["_token"])
+    api_key_id = (row.get("kalshi_api_key") or "").strip()
+    private_key_pem = (row.get("kalshi_api_secret") or "").strip()
+    if not api_key_id or not private_key_pem:
+        items = [{"city": c["name"], "status": "no_kalshi_creds"} for c in KALSHI_CLIMA_CITIES]
+        payload = {"items": items, "top5": [], "updated_at": datetime.now(timezone.utc).isoformat()}
+        return payload
+
+    from kalshi_api import get_markets
+
+    tz = ZoneInfo("America/New_York")
+    today_et = datetime.now(tz=tz)
+    target_date = today_et + timedelta(days=1)
+    items = []
+    top_candidates = []
+
+    for city in KALSHI_CLIMA_CITIES:
+        event_ticker = _kalshi_event_ticker(city["series"], target_date)
+        try:
+            data = get_markets(api_key_id, private_key_pem, status="open", limit=200, series_ticker=city["series"])
+        except Exception:
+            items.append({"city": city["name"], "status": "no_markets"})
+            continue
+        markets = data.get("markets") or data.get("data") or []
+        markets = [m for m in markets if (m.get("event_ticker") or "").upper() == event_ticker]
+        if not markets:
+            items.append({"city": city["name"], "status": "no_markets"})
+            continue
+
+        unit_texts = [(m.get("title") or m.get("yes_sub_title") or m.get("subtitle") or "") for m in markets]
+        unit = _detect_unit(unit_texts, "")
+        forecast = _forecast_max_and_sigma(city, unit, target_date)
+        if not forecast:
+            items.append({"city": city["name"], "status": "no_forecast"})
+            continue
+
+        candidates = []
+        for m in markets:
+            candidate = _best_ev_outcome_for_kalshi_market(api_key_id, private_key_pem, m, forecast, unit)
+            if candidate and candidate.get("ev", 0) > 0:
+                price_val = float(candidate.get("price") or 0)
+                prob_val = float(candidate.get("prob") or 0)
+                sigma_val = float(candidate.get("sigma") or 0)
+                if price_val < 0.20 or price_val > 0.97:
+                    continue
+                if prob_val < 0.70:
+                    continue
+                if sigma_val > 4.0:
+                    continue
+                if candidate.get("ev", 0) < 0.05:
+                    continue
+                explanation = (
+                    f"Max forecast {candidate['max_temp']:.1f} ({unit}) | sigma {candidate['sigma']:.1f} | "
+                    f"prob {candidate['prob']*100:.1f}% | EV {candidate['ev']*100:.1f}% | skew {candidate.get('skew', 0):+.2f}"
+                )
+                candidate = dict(candidate)
+                candidate["explanation"] = explanation
+                candidate["link"] = _kalshi_market_link(city, candidate.get("ticker") or "")
+                candidates.append(candidate)
+
+        if not candidates:
+            items.append({"city": city["name"], "status": "no_ev"})
+            continue
+
+        candidates.sort(key=lambda c: c["ev"], reverse=True)
+        top3 = candidates[:3]
+        items.append({
+            "city": city["name"],
+            "status": "ok",
+            "bets": [
+                {
+                    "outcome": c["outcome"],
+                    "price": c["price"],
+                    "prob": c["prob"],
+                    "ev": c["ev"],
+                    "sigma": c["sigma"],
+                    "side": c["side"],
+                    "ticker": c["ticker"],
+                    "explanation": c["explanation"],
+                    "link": c["link"],
+                }
+                for c in top3
+            ],
+        })
+        for c in candidates:
+            top_candidates.append({
+                "city": city["name"],
+                "outcome": c["outcome"],
+                "price": c["price"],
+                "prob": c["prob"],
+                "ev": c["ev"],
+                "sigma": c["sigma"],
+                "side": c["side"],
+                "ticker": c["ticker"],
+                "explanation": c["explanation"],
+                "link": c["link"],
+            })
+
+    top5 = []
+    seen_cities = set()
+    for c in sorted(top_candidates, key=lambda c: (c["sigma"], -c["prob"])):
+        city_key = (c.get("city") or "").strip().lower()
+        if not city_key or city_key in seen_cities:
+            continue
+        seen_cities.add(city_key)
+        top5.append(c)
+        if len(top5) >= 5:
+            break
+
+    payload = {"items": items, "top5": top5, "updated_at": datetime.now(timezone.utc).isoformat()}
+    _cache_set(_ev_clima_cache, "summary_kalshi", payload)
     return payload
 
 
@@ -2494,6 +2704,12 @@ class EvClimaBuyRequest(BaseModel):
     token_id: str
     amount: Optional[float] = None
 
+class EvClimaKalshiBuyRequest(BaseModel):
+    ticker: str
+    side: Literal["yes", "no"]
+    price: float
+    amount: Optional[float] = None
+
 
 class EvEsportesBuyRequest(BaseModel):
     token_id: str
@@ -2548,6 +2764,35 @@ def ev_clima_buy(req: EvClimaBuyRequest, user: dict = Depends(get_current_user))
         return {"ok": ok, "status": resp.get("status")}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Falha ao enviar ordem: {e!s}")
+
+
+@app.post("/api/ev-clima-kalshi/buy")
+def ev_clima_kalshi_buy(req: EvClimaKalshiBuyRequest, user: dict = Depends(get_current_user)):
+    row = _config_from_supabase(user["id"], user["_token"])
+    if not row:
+        raise HTTPException(status_code=400, detail="Config não encontrada.")
+    api_key_id = (row.get("kalshi_api_key") or "").strip()
+    private_key_pem = (row.get("kalshi_api_secret") or "").strip()
+    if not api_key_id or not private_key_pem:
+        raise HTTPException(status_code=400, detail="Salve as credenciais Kalshi na Config.")
+
+    from kalshi_api import create_order
+
+    min_bet = float(row.get("min_bet", 5))
+    safe_bet = row.get("safe_bet")
+    amount = float(req.amount) if req.amount is not None else (float(safe_bet) if safe_bet else min_bet)
+    amount = max(amount, min_bet)
+    price = float(req.price)
+    if price <= 0:
+        raise HTTPException(status_code=400, detail="Preço inválido.")
+    count = int(amount / price)
+    if count < 1:
+        raise HTTPException(status_code=400, detail="Valor insuficiente para 1 contrato.")
+    try:
+        resp = create_order(api_key_id, private_key_pem, req.ticker, req.side, count, price, "fill_or_kill")
+        return {"ok": True, "count": count, "status": resp.get("status", "submitted")}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Falha ao enviar ordem Kalshi: {e!s}")
 
 
 @app.post("/api/ev-esportes/buy")

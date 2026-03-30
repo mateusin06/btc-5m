@@ -90,6 +90,7 @@
       <button type="button" data-tab="config" class="tab pb-3 px-1 text-gray-400 hover:text-white tab-active">Config & API</button>
       <button type="button" data-tab="bot" class="tab pb-3 px-1 text-gray-400 hover:text-white">Iniciar bot</button>
       <button type="button" data-tab="clima" class="tab pb-3 px-1 text-gray-400 hover:text-white">EV+ Clima</button>
+      <button type="button" data-tab="clima-kalshi" class="tab pb-3 px-1 text-gray-400 hover:text-white">EV+ Clima Kalshi</button>
       <button type="button" data-tab="admin" id="tab-admin" class="tab pb-3 px-1 text-gray-400 hover:text-white hidden">Admin</button>
     </nav>
 
@@ -455,6 +456,32 @@
       </div>
     </section>
 
+    <!-- Tab: EV+ Clima Kalshi -->
+    <section id="section-clima-kalshi" class="hidden space-y-6">
+      <div class="bg-panel rounded-xl border border-border p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-lg font-semibold text-white">EV+ Clima Kalshi</h2>
+            <p class="text-sm text-muted">Atualiza automaticamente a cada 30 minutos.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-gray-400">Aposta (USD)</label>
+            <input type="number" id="clima-kalshi-bet-amount" step="0.01" min="0" class="w-24 bg-[#0f1116] border border-border rounded-lg px-2 py-1 text-sm" />
+          </div>
+        </div>
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-semibold text-white">Top 5 do dia (menor sigma + maior prob.)</h3>
+            <span id="clima-kalshi-top5-meta" class="text-xs text-muted"></span>
+          </div>
+          <div id="clima-kalshi-top5-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3"></div>
+          <p id="clima-kalshi-top5-status" class="text-xs text-muted mt-2"></p>
+        </div>
+        <div id="clima-kalshi-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        <p id="clima-kalshi-status" class="text-sm text-muted mt-3"></p>
+      </div>
+    </section>
+
     </section>
   </div>
   <!-- fim dashboard -->
@@ -595,7 +622,7 @@
     });
 
     function showSection(name) {
-      ['config','bot','clima','admin'].forEach(t => {
+      ['config','bot','clima','clima-kalshi','admin'].forEach(t => {
         const s = getEl('section-' + t);
         if (s) s.classList.toggle('hidden', t !== name);
       });
@@ -607,6 +634,7 @@
       });
       if (name === 'bot' && typeof refreshBotLogs === 'function') refreshBotLogs();
       if (name === 'clima' && typeof loadEvClima === 'function') loadEvClima();
+      if (name === 'clima-kalshi' && typeof loadEvClimaKalshi === 'function') loadEvClimaKalshi();
       if (name === 'admin' && typeof loadAdminUsers === 'function') loadAdminUsers();
     }
 
@@ -746,6 +774,10 @@
         if (climaBet) {
           climaBet.value = (c.safe_bet != null ? c.safe_bet : (c.min_bet ?? 5));
         }
+        const climaKalshiBet = getEl('clima-kalshi-bet-amount');
+        if (climaKalshiBet) {
+          climaKalshiBet.value = (c.safe_bet != null ? c.safe_bet : (c.min_bet ?? 5));
+        }
         if (c.has_kalshi_api_creds === undefined) {
           getEl('kalshi-status').textContent = 'API Kalshi indisponível (backend desatualizado).';
         } else {
@@ -757,7 +789,7 @@
         getEl('input-telegram-chat').value = '';
         // Sincronizar dropdown "Modo" do Iniciar com a config salva (evita iniciar em safe sem querer)
         const modeEl = getEl('bot-mode');
-        if (c.bot_mode && ['spike_ai','moon','multi_confirm','arb_kalshi'].includes(c.bot_mode)) {
+        if (c.bot_mode && ['spike_ai','moon','multi_confirm','arb_kalshi','arb_poly'].includes(c.bot_mode)) {
           modeEl.value = c.bot_mode;
         } else {
           modeEl.value = 'spike_ai';
@@ -1103,11 +1135,120 @@
     }
 
 
+    // --- EV+ Clima Kalshi
+    async function loadEvClimaKalshi() {
+      const grid = getEl('clima-kalshi-grid');
+      const status = getEl('clima-kalshi-status');
+      const topGrid = getEl('clima-kalshi-top5-grid');
+      const topStatus = getEl('clima-kalshi-top5-status');
+      const topMeta = getEl('clima-kalshi-top5-meta');
+      if (!grid || !status) return;
+      status.textContent = 'Carregando...';
+      try {
+        const r = await fetch(API + '/api/ev-clima-kalshi/summary', { headers: authHeaders() });
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+        const items = data.items || [];
+        const top5 = data.top5 || [];
+        if (!items.length) {
+          grid.innerHTML = '';
+          status.textContent = 'Nenhum dado de clima disponÃ­vel.';
+          return;
+        }
+        if (topGrid) {
+          if (!top5.length) {
+            topGrid.innerHTML = '';
+            if (topStatus) topStatus.textContent = 'Sem apostas EV+ no Top 5 por enquanto.';
+          } else {
+            topGrid.innerHTML = top5.map(item => `
+              <div class="border border-border rounded-lg p-3 bg-[#0f1116]">
+                <div class="text-xs text-gray-400 mb-1">${item.city}</div>
+                <div class="text-xs text-gray-300 font-medium mb-1">${item.outcome}</div>
+                <div class="text-[11px] text-gray-400 mb-2">PreÃ§o: ${Number(item.price).toFixed(2)} | EV+: ${(Number(item.ev) * 100).toFixed(1)}% | Ïƒ ${Number(item.sigma).toFixed(1)} | prob ${(Number(item.prob) * 100).toFixed(1)}%</div>
+                <div class="text-[11px] text-muted mb-2">${item.explanation}</div>
+                <div class="flex items-center gap-2">
+                  <button type="button" class="btn-ev-kalshi-buy px-2 py-1 text-xs bg-accent text-black rounded" data-ticker="${item.ticker || ''}" data-side="${item.side || ''}" data-price="${item.price || ''}">Comprar</button>
+                  <a href="${item.link}" target="_blank" rel="noopener" class="text-[11px] text-accent hover:underline">Abrir</a>
+                </div>
+              </div>
+            `).join('');
+            if (topStatus) topStatus.textContent = '';
+          }
+        }
+        grid.innerHTML = items.map(item => {
+          if (item.status !== 'ok') {
+            return `
+              <div class="border border-border rounded-lg p-4 bg-[#0f1116]">
+                <div class="text-sm text-gray-300 font-medium mb-1">${item.city}</div>
+                <div class="text-xs text-muted">IndisponÃ­vel (${item.status})</div>
+              </div>
+            `;
+          }
+          const bets = item.bets || [];
+          const betsHtml = bets.map(b => `
+            <div class="border border-border/50 rounded-lg p-3 bg-[#0b0d12]">
+              <div class="text-xs text-gray-300 font-medium mb-1">${b.outcome}</div>
+              <div class="text-[11px] text-gray-400 mb-2">PreÃ§o: ${Number(b.price).toFixed(2)} | EV+: ${(Number(b.ev) * 100).toFixed(1)}% | Ïƒ ${Number(b.sigma).toFixed(1)} | prob ${(Number(b.prob) * 100).toFixed(1)}%</div>
+              <div class="text-[11px] text-muted mb-2">${b.explanation}</div>
+              <div class="flex items-center gap-2">
+                <button type="button" class="btn-ev-kalshi-buy px-2 py-1 text-xs bg-accent text-black rounded" data-ticker="${b.ticker || ''}" data-side="${b.side || ''}" data-price="${b.price || ''}">Comprar</button>
+                <a href="${b.link}" target="_blank" rel="noopener" class="text-[11px] text-accent hover:underline">Abrir mercado</a>
+              </div>
+            </div>
+          `).join('');
+          return `
+            <div class="border border-border rounded-lg p-4 bg-[#0f1116]">
+              <div class="text-sm text-gray-300 font-medium mb-1">${item.city}</div>
+              <div class="space-y-3">${betsHtml || '<div class="text-xs text-muted">Sem apostas EV+.</div>'}</div>
+            </div>
+          `;
+        }).join('');
+        const updatedText = `Atualizado em ${new Date(data.updated_at).toLocaleString('pt-BR')}`;
+        status.textContent = updatedText;
+        if (topMeta) topMeta.textContent = updatedText;
+        document.querySelectorAll('.btn-ev-kalshi-buy').forEach(btn => {
+          btn.addEventListener('click', () => buyEvClimaKalshi(btn.dataset.ticker || '', btn.dataset.side || '', btn.dataset.price || ''));
+        });
+      } catch (e) {
+        status.textContent = 'Erro ao carregar clima Kalshi: ' + e.message;
+      }
+    }
+
+    async function buyEvClimaKalshi(ticker, side, price) {
+      if (!ticker || !side) {
+        alert('Contrato nÃ£o disponÃ­vel para compra.');
+        return;
+      }
+      const amountInput = getEl('clima-kalshi-bet-amount');
+      const amount = amountInput ? parseFloat(amountInput.value) : NaN;
+      const body = { ticker: ticker, side: side, price: Number(price) };
+      if (!isNaN(amount) && amount > 0) body.amount = amount;
+      try {
+        const r = await fetch(API + '/api/ev-clima-kalshi/buy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify(body)
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || r.statusText);
+        alert(data.ok ? 'Ordem enviada.' : 'Falha ao enviar ordem.');
+      } catch (e) {
+        alert('Erro: ' + e.message);
+      }
+    }
+
     // Auto-refresh clima a cada 30 minutos (cache global)
     setInterval(() => {
       const climaSection = getEl('section-clima');
       if (climaSection && !climaSection.classList.contains('hidden')) {
         loadEvClima();
+      }
+    }, 30 * 60 * 1000);
+
+    setInterval(() => {
+      const climaKalshiSection = getEl('section-clima-kalshi');
+      if (climaKalshiSection && !climaKalshiSection.classList.contains('hidden')) {
+        loadEvClimaKalshi();
       }
     }, 30 * 60 * 1000);
 
