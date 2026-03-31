@@ -77,6 +77,7 @@ CLIMA_CITIES = [
     {"name": "Seoul", "slug": "seoul", "lat": 37.5665, "lon": 126.9780},
     {"name": "Wellington", "slug": "wellington", "lat": -41.2865, "lon": 174.7762},
     {"name": "Ankara", "slug": "ankara", "lat": 39.9334, "lon": 32.8597},
+    {"name": "Istanbul", "slug": "istanbul", "lat": 41.0082, "lon": 28.9784},
     {"name": "Dallas", "slug": "dallas"},
     {"name": "Shanghai", "slug": "shanghai"},
     {"name": "Hong Kong", "slug": "hong-kong"},
