@@ -1814,6 +1814,61 @@ def _best_ev_outcome_for_market(market: dict, forecast) -> Optional[dict]:
     return max(candidates, key=lambda x: x["ev"])
 
 
+def _all_outcomes_for_market(market: dict, forecast) -> list[dict]:
+    if isinstance(forecast, dict):
+        max_temp = forecast.get("max_temp")
+        sigma = forecast.get("sigma")
+        skew = forecast.get("skew", 0.0)
+    else:
+        max_temp, sigma = forecast
+        skew = 0.0
+    outcomes, prices, token_ids = _parse_outcomes(market)
+    if len(outcomes) < 2 or len(prices) < 2:
+        return []
+    title = market.get("groupItemTitle") or market.get("question") or ""
+    low, high = _parse_range(title)
+    if low is None and high is None:
+        return []
+    prob_yes = _range_prob(low, high, max_temp, sigma, skew)
+    prob_no = 1.0 - prob_yes
+    try:
+        yes_idx = outcomes.index("Yes")
+    except ValueError:
+        yes_idx = 0
+    try:
+        no_idx = outcomes.index("No")
+    except ValueError:
+        no_idx = 1 if len(outcomes) > 1 else 0
+    candidates = []
+    if yes_idx < len(prices) and yes_idx < len(token_ids):
+        yes_price = float(prices[yes_idx])
+        candidates.append({
+            "outcome": f"YES — {title}",
+            "price": yes_price,
+            "prob": prob_yes,
+            "ev": prob_yes - yes_price,
+            "token_id": token_ids[yes_idx],
+            "market_slug": market.get("slug"),
+            "max_temp": max_temp,
+            "sigma": sigma,
+            "skew": skew,
+        })
+    if no_idx < len(prices) and no_idx < len(token_ids):
+        no_price = float(prices[no_idx])
+        candidates.append({
+            "outcome": f"NO — {title}",
+            "price": no_price,
+            "prob": prob_no,
+            "ev": prob_no - no_price,
+            "token_id": token_ids[no_idx],
+            "market_slug": market.get("slug"),
+            "max_temp": max_temp,
+            "sigma": sigma,
+            "skew": skew,
+        })
+    return candidates
+
+
 def _kalshi_date_code(date_obj: datetime) -> str:
     return date_obj.strftime("%y%b%d").upper()
 
@@ -2190,7 +2245,21 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
             items.append({"city": city["name"], "slug": slug, "status": "no_forecast"})
             continue
         candidates = []
+        all_candidates = []
         for m in markets:
+            for cand in _all_outcomes_for_market(m, forecast):
+                price_val = float(cand.get("price") or 0)
+                if price_val < 0.20 or price_val > 0.97:
+                    continue
+                explanation = (
+                    f"Max forecast {cand['max_temp']:.1f} ({unit}) | sigma {cand['sigma']:.1f} | "
+                    f"prob {cand['prob']*100:.1f}% | EV {cand['ev']*100:.1f}% | skew {cand.get('skew', 0):+.2f}"
+                )
+                cand = dict(cand)
+                cand["explanation"] = explanation
+                cand["link"] = f"https://polymarket.com/market/{cand.get('market_slug')}"
+                all_candidates.append(cand)
+
             candidate = _best_ev_outcome_for_market(m, forecast)
             if candidate and candidate.get("ev", 0) > 0:
                 price_val = float(candidate.get("price") or 0)
@@ -2204,15 +2273,26 @@ def ev_clima_summary(user: dict = Depends(get_current_user)):
                 candidate["explanation"] = explanation
                 candidate["link"] = f"https://polymarket.com/market/{candidate.get('market_slug')}"
                 candidates.append(candidate)
-        if not candidates:
+        best_prob = max(all_candidates, key=lambda c: c["prob"], default=None)
+        candidates.sort(key=lambda c: c["ev"], reverse=True)
+        top3 = [c for c in candidates if not best_prob or c.get("token_id") != best_prob.get("token_id")][:3]
+        if not best_prob and not top3:
             items.append({"city": city["name"], "slug": slug, "status": "no_ev"})
             continue
-        candidates.sort(key=lambda c: c["ev"], reverse=True)
-        top3 = candidates[:3]
         items.append({
             "city": city["name"],
             "slug": slug,
             "status": "ok",
+            "best_prob": ({
+                "outcome": best_prob["outcome"],
+                "price": best_prob["price"],
+                "prob": best_prob["prob"],
+                "ev": best_prob["ev"],
+                "sigma": best_prob["sigma"],
+                "token_id": best_prob["token_id"],
+                "explanation": best_prob["explanation"],
+                "link": best_prob["link"],
+            } if best_prob else None),
             "bets": [
                 {
                     "outcome": c["outcome"],

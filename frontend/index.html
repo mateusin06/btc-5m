@@ -1081,7 +1081,20 @@
               </div>
             `;
           }
+          const bestProb = item.best_prob || null;
           const bets = item.bets || [];
+          const bestProbHtml = bestProb ? `
+            <div class="border border-border/50 rounded-lg p-3 bg-[#0b0d12]">
+              <div class="text-[11px] text-accent mb-1">OBS: maior probabilidade da cidade</div>
+              <div class="text-xs text-gray-300 font-medium mb-1">${bestProb.outcome}</div>
+              <div class="text-[11px] text-gray-400 mb-2">Preço: ${Number(bestProb.price).toFixed(2)} | EV+: ${(Number(bestProb.ev) * 100).toFixed(1)}% | σ ${Number(bestProb.sigma).toFixed(1)} | prob ${(Number(bestProb.prob) * 100).toFixed(1)}%</div>
+              <div class="text-[11px] text-muted mb-2">${bestProb.explanation}</div>
+              <div class="flex items-center gap-2">
+                <button type="button" class="btn-ev-buy px-2 py-1 text-xs bg-accent text-black rounded" data-token="${bestProb.token_id || ''}">Comprar</button>
+                <a href="${bestProb.link}" target="_blank" rel="noopener" class="text-[11px] text-accent hover:underline">Abrir mercado</a>
+              </div>
+            </div>
+          ` : '';
           const betsHtml = bets.map(b => `
             <div class="border border-border/50 rounded-lg p-3 bg-[#0b0d12]">
               <div class="text-xs text-gray-300 font-medium mb-1">${b.outcome}</div>
@@ -1096,7 +1109,7 @@
           return `
             <div class="border border-border rounded-lg p-4 bg-[#0f1116]">
               <div class="text-sm text-gray-300 font-medium mb-1">${item.city}</div>
-              <div class="space-y-3">${betsHtml || '<div class="text-xs text-muted">Sem apostas EV+.</div>'}</div>
+              <div class="space-y-3">${bestProbHtml}${betsHtml || '<div class="text-xs text-muted">Sem apostas EV+.</div>'}</div>
             </div>
           `;
         }).join('');
