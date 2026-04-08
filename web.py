@@ -90,6 +90,7 @@ CLIMA_CITIES = [
     {"name": "Singapore", "slug": "singapore"},
     {"name": "Lucknow", "slug": "lucknow"},
     {"name": "Wuhan", "slug": "wuhan"},
+    {"name": "Moscow", "slug": "moscow", "lat": 55.7558, "lon": 37.6173},
     {"name": "Warsaw", "slug": "warsaw"},
     {"name": "Shenzhen", "slug": "shenzhen"},
     {"name": "Beijing", "slug": "beijing"},
@@ -432,7 +433,7 @@ class ConfigUpdate(BaseModel):
     telegram_chat_id: Optional[str] = None
     starting_bankroll: Optional[float] = None
     min_bet: Optional[float] = None
-    bot_mode: Optional[Literal["safe", "spike_ai", "moon", "multi_confirm", "aggressive", "degen", "arbitragem", "arb_kalshi", "arb_poly", "only_hedge_plus", "odd_master", "90_95"]] = None
+    bot_mode: Optional[Literal["safe", "spike_ai", "moon", "multi_confirm", "streak4", "aggressive", "degen", "arbitragem", "arb_kalshi", "arb_poly", "only_hedge_plus", "odd_master", "90_95"]] = None
     aggressive_bet_pct: Optional[float] = None
     max_token_price: Optional[float] = None
     arb_min_profit_pct: Optional[float] = None
@@ -471,7 +472,7 @@ class ConfigResponse(BaseModel):
 
 
 class BotStartRequest(BaseModel):
-    mode: Literal["safe", "spike_ai", "moon", "multi_confirm", "aggressive", "dry_run", "arbitragem", "arb_kalshi", "arb_poly", "only_hedge_plus", "odd_master", "90_95"] = Field(..., description="Modo de trading")
+    mode: Literal["safe", "spike_ai", "moon", "multi_confirm", "streak4", "aggressive", "dry_run", "arbitragem", "arb_kalshi", "arb_poly", "only_hedge_plus", "odd_master", "90_95"] = Field(..., description="Modo de trading")
     dry_run: bool = Field(False, description="Se True, simula sem ordens reais")
     markets: List[Literal["btc", "eth", "btc15m", "eth15m"]] = Field(default=["btc"], description="Mercados: btc, eth, btc15m, eth15m (lista)")
     safe_bet: Optional[float] = None
@@ -931,7 +932,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     # Em operação real, validar parâmetros obrigatórios por modo
     if not dry_run:
         min_bet = float(row.get("min_bet", 5))
-        if mode in ("safe", "spike_ai", "moon", "multi_confirm"):
+        if mode in ("safe", "spike_ai", "moon", "multi_confirm", "streak4"):
             safe_bet = req.safe_bet if req.safe_bet is not None else (row.get("safe_bet") and float(row["safe_bet"]))
             if safe_bet is None or safe_bet < min_bet:
                 raise HTTPException(
@@ -1026,7 +1027,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     # Atualizar Supabase com o modo (e parâmetros) usados ao iniciar — assim bot_mode fica sincronizado
     try:
         start_config: dict = {"bot_mode": mode}
-        if mode in ("safe", "spike_ai", "moon", "multi_confirm") and (req.safe_bet is not None or (row.get("safe_bet") and float(row["safe_bet"]))):
+        if mode in ("safe", "spike_ai", "moon", "multi_confirm", "streak4") and (req.safe_bet is not None or (row.get("safe_bet") and float(row["safe_bet"]))):
             start_config["safe_bet"] = req.safe_bet if req.safe_bet is not None else float(row["safe_bet"])
         if mode == "aggressive":
             start_config["aggressive_bet_pct"] = int(round(pct_aggressive))
@@ -1045,7 +1046,7 @@ def bot_start(req: BotStartRequest, user: dict = Depends(get_current_user)):
     cmd = [sys.executable, str(PROJECT_ROOT / "bot.py"), "--mode", mode, "--markets", ",".join(markets_list)]
     if dry_run:
         cmd.append("--dry-run")
-    if mode in ("safe", "spike_ai", "moon", "multi_confirm"):
+    if mode in ("safe", "spike_ai", "moon", "multi_confirm", "streak4"):
         safe_bet_val = req.safe_bet if req.safe_bet is not None else (float(row["safe_bet"]) if row.get("safe_bet") else None)
         if safe_bet_val is not None:
             cmd.extend(["--safe-bet", str(round(safe_bet_val, 2))])

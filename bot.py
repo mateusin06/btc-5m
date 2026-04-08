@@ -50,6 +50,7 @@ MODES = {
     "spike_ai": {"min_confidence": 0.72},  # Igual ao safe, mas com gate de IA (Ollama) antes de executar
     "moon": {"min_confidence": 0.40},  # Estratégia MOON: CVD (divergência + momentum) com mão fixa safe
     "multi_confirm": {"min_confidence": 0.40},  # Multi-Confirmacao + Regime + Divergencia (sinais)
+    "streak4": {},  # 4x streak: entra contra o streak das 4 últimas janelas
     "aggressive": {"bet_pct": float(os.getenv("AGGRESSIVE_BET_PCT", "25")) / 100.0, "min_confidence": 0.58},
     "degen": {"bet_pct": 1.0, "min_confidence": 0.0},
     "arbitragem": {"min_confidence": 0.30},
@@ -113,6 +114,8 @@ MIN_TOKEN_PRICE = float(os.getenv("MIN_TOKEN_PRICE", "0.30"))
 _last_bet_window_by_market: dict[str, int] = {}
 _chainlink_ptb_cache: dict[tuple[str, int], float] = {}
 _bankroll_lock = threading.Lock()
+_streak_history_by_market: dict[str, list[str]] = {}
+_streak_last_window_by_market: dict[str, int] = {}
 # Modo fixado no arranque (fonte única de verdade; evita safe quando iniciou em aggressive)
 FROZEN_MODE: Optional[str] = None
 
@@ -200,6 +203,68 @@ def _get_poly_ptb_chainlink(market: str, window_ts: int) -> Optional[float]:
 def seconds_until_close(window_ts: int, window_sec: int) -> int:
     """Segundos até o fechamento da janela (window_ts + window_sec - now)."""
     return (window_ts + window_sec) - int(time.time())
+
+
+def _get_window_result(market: str, window_ts: int, window_sec: int) -> Optional[str]:
+    """Resultado da janela anterior (up/down) com base em candles."""
+    from api import get_candles_by_market, get_btc_candles_1m, get_eth_candles_1m
+
+    prev_ts = window_ts - window_sec
+    if prev_ts <= 0:
+        return None
+
+    open_price = None
+    close_price = None
+
+    if market == "btc15m":
+        candles = get_candles_by_market(market, limit=10)
+        for c in candles:
+            if (c.get("t") or 0) // 1000 == prev_ts:
+                open_price = c.get("o")
+                close_price = c.get("c")
+                break
+    else:
+        limit = int(window_sec / 60) + 6
+        if market in ("eth", "eth15m"):
+            candles = get_eth_candles_1m(limit=limit)
+        else:
+            candles = get_btc_candles_1m(limit=limit)
+        candles = sorted(candles, key=lambda c: c.get("t") or 0)
+        for c in candles:
+            ts = (c.get("t") or 0) // 1000
+            if ts == prev_ts:
+                open_price = c.get("o")
+            if ts == (prev_ts + window_sec - 60):
+                close_price = c.get("c")
+        if open_price is None or close_price is None:
+            window_candles = [c for c in candles if prev_ts <= (c.get("t") or 0) // 1000 < (prev_ts + window_sec)]
+            if window_candles:
+                if open_price is None:
+                    open_price = window_candles[0].get("o")
+                if close_price is None:
+                    close_price = window_candles[-1].get("c")
+
+    if open_price is None or close_price is None:
+        return None
+    return "up" if float(close_price) >= float(open_price) else "down"
+
+
+def _update_streak_history(market: str, window_ts: int, window_sec: int) -> list[str]:
+    prev_ts = window_ts - window_sec
+    if prev_ts <= 0:
+        return _streak_history_by_market.get(market, [])
+    if _streak_last_window_by_market.get(market) == prev_ts:
+        return _streak_history_by_market.get(market, [])
+    result = _get_window_result(market, window_ts, window_sec)
+    if result not in ("up", "down"):
+        return _streak_history_by_market.get(market, [])
+    history = _streak_history_by_market.get(market, [])
+    history.append(result)
+    if len(history) > 4:
+        history = history[-4:]
+    _streak_history_by_market[market] = history
+    _streak_last_window_by_market[market] = prev_ts
+    return history
 
 
 def load_config() -> Config:
@@ -1482,10 +1547,11 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         return False
     # Safe/aggressive: BTC-ETH 5m = desde 2 min até 40s; BTC 15m = desde 5 min até 40s
     monitor_secs = (
-        MONITOR_START_T_15M if is_15m else (
+        window_sec if active_mode == "streak4" else
+        (MONITOR_START_T_15M if is_15m else (
             ODD_MASTER_LAST_SEC if active_mode == "odd_master" else
             (WINDOW_SEC if active_mode == "arbitragem" else MONITOR_START_T)
-        )
+        ))
     )
 
     # Se já passou do prazo para operar nesta janela (ex.: thread reentrou logo após ciclo), usar próxima janela
@@ -1544,6 +1610,23 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
     final_result = None
     ai_denied_until = 0.0
 
+    if active_mode == "streak4":
+        history = _update_streak_history(market, window_ts, window_sec)
+        if history:
+            print(f"  [{market.upper()}] 4X STREAK: janela anterior {history[-1].upper()} | hist={','.join(history)}", flush=True)
+        if not history or len(history) < 4 or len(set(history[-4:])) != 1:
+            print(f"  [{market.upper()}] 4X STREAK: sem sinal (hist={','.join(history) if history else 'n/a'}), pulando janela.", flush=True)
+            _last_bet_window_by_market[market] = window_ts
+            return False
+        last_dir = history[-1]
+        trade_direction = "down" if last_dir == "up" else "up"
+        fired = True
+        print(f"  [{market.upper()}] 4X STREAK: últimos 4 {last_dir.upper()} -> entrando {trade_direction.upper()}", flush=True)
+        _tg_send(
+            f"[{market.upper()}] 4X STREAK: últimos 4 {last_dir.upper()} -> {trade_direction.upper()}\n"
+            f"https://polymarket.com/market/{slug}"
+        )
+
     # Para ODD MASTER e 90-95: loop até 2s antes do close; safe/aggressive/etc.: até 40s antes (desde 2min ou 5min conforme mercado)
     if active_mode in ("odd_master", "90_95"):
         deadline_sec = ODD_MASTER_EARLY_EXIT  # 2s — assim o loop continua até faltar 2s; dentro do bloco checamos 2 <= secs <= 10
@@ -1551,6 +1634,8 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         deadline_sec = HARD_DEADLINE_T
 
     while int(time.time()) < close_time - deadline_sec:
+        if active_mode == "streak4":
+            break
         price = get_price_by_market(market)
         # Modo ODD MASTER: entrar SOMENTE entre 10s e 2s antes do close; lado de MAIOR ODD = menor preço (centavos)
         if active_mode == "odd_master" and tokens and len(tokens) == 2 and event:
@@ -2005,7 +2090,7 @@ def run_trade_cycle(config: Config, market: str, active_mode: Optional[str] = No
         except (ValueError, TypeError):
             pass
 
-    if active_mode in ("safe", "spike_ai", "moon", "multi_confirm") and config.fixed_bet_safe is not None:
+    if active_mode in ("safe", "spike_ai", "moon", "multi_confirm", "streak4") and config.fixed_bet_safe is not None:
         bet_size = config.fixed_bet_safe
     elif active_mode == "only_hedge_plus":
         bet_size = config.fixed_bet_only_hedge if config.fixed_bet_only_hedge is not None else config.min_bet
@@ -2350,7 +2435,7 @@ def main():
     global FROZEN_MODE
     parser = argparse.ArgumentParser(description="Polymarket BTC 5-Min Up/Down Bot")
     parser.add_argument("--dry-run", action="store_true", help="Simular sem ordens reais")
-    parser.add_argument("--mode", choices=["safe", "spike_ai", "moon", "multi_confirm", "aggressive", "degen", "arbitragem", "arb_kalshi", "arb_poly", "only_hedge_plus", "odd_master", "90_95"], help="Modo de trading")
+    parser.add_argument("--mode", choices=["safe", "spike_ai", "moon", "multi_confirm", "streak4", "aggressive", "degen", "arbitragem", "arb_kalshi", "arb_poly", "only_hedge_plus", "odd_master", "90_95"], help="Modo de trading")
     parser.add_argument("--safe-bet", type=float, metavar="USD", help="Modo safe: valor fixo em USD por entrada")
     parser.add_argument("--only-hedge-bet", type=float, metavar="USD", help="Modo only_hedge_plus: valor fixo em USD por entrada")
     parser.add_argument("--odd-master-bet", type=float, metavar="USD", help="Modo odd_master: valor fixo em USD por entrada")
@@ -2471,7 +2556,7 @@ def main():
                 print("90-95 exige valor. Use --bet-90-95 5.0 ou BET_90_95 no env.", flush=True, file=sys.stderr)
                 sys.exit(1)
 
-    if config.mode in ("safe", "spike_ai", "moon", "multi_confirm"):
+    if config.mode in ("safe", "spike_ai", "moon", "multi_confirm", "streak4"):
         if args.safe_bet is not None:
             v = args.safe_bet
             if v < config.min_bet:
@@ -2481,7 +2566,7 @@ def main():
         elif sys.stdin.isatty() and sys.stderr.isatty():
             while True:
                 try:
-                    label = "Modo safe" if config.mode == "safe" else ("Modo SPIKE AI" if config.mode == "spike_ai" else ("Modo MOON" if config.mode == "moon" else "Modo MC+RD"))
+                    label = "Modo safe" if config.mode == "safe" else ("Modo SPIKE AI" if config.mode == "spike_ai" else ("Modo MOON" if config.mode == "moon" else ("Modo MC+RD" if config.mode == "multi_confirm" else "Modo 4X STREAK")))
                     print(f"{label}: valor fixo em USD [min ${config.min_bet:.2f}]: ", end="", flush=True, file=sys.stderr)
                     s = input().strip()
                     if not s:
@@ -2540,6 +2625,8 @@ def main():
         print(f"MOON: estratégia CVD (divergência + momentum) com mão fixa safe | entrada fixa ${config.fixed_bet_safe:.2f}", flush=True)
     if config.mode == "multi_confirm":
         print("MC+RD: Multi-Confirmacao + Regime + Divergencia | min conf 40% | min confs 3/6 | entra apenas com EV+", flush=True)
+    if config.mode == "streak4":
+        print("4X STREAK: entra contra o streak das 4 últimas janelas | usa safe bet", flush=True)
     if config.mode == "arb_poly":
         print(f"ARB KALSHI: perna 1 no início da janela | alvo lucro {ARB_POLY_TARGET_PROFIT_PCT:.0%} | re-hedge final a 3 min do close", flush=True)
     if config.mode == "only_hedge_plus":

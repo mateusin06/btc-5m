@@ -319,6 +319,7 @@
               <option value="spike_ai">SPIKE AI — safe + aprovação da IA (Ollama)</option>
               <option value="moon">MOON — CVD (divergência + momentum) com mão fixa safe</option>
               <option value="multi_confirm">Multi-Confirmação + Regime + Divergência (sinais)</option>
+              <option value="streak4">4x Streak — contra o streak das últimas 4 janelas</option>
               <option value="arb_kalshi">Arb Kalshi — Polymarket vs Kalshi (BTC/ETH 15min)</option>
               <option value="arb_poly">Arb Kalshi — 2 pernas na Kalshi (BTC/ETH 15min)</option>
             </select>
@@ -789,7 +790,7 @@
         getEl('input-telegram-chat').value = '';
         // Sincronizar dropdown "Modo" do Iniciar com a config salva (evita iniciar em safe sem querer)
         const modeEl = getEl('bot-mode');
-        if (c.bot_mode && ['spike_ai','moon','multi_confirm','arb_kalshi','arb_poly'].includes(c.bot_mode)) {
+        if (c.bot_mode && ['spike_ai','moon','multi_confirm','streak4','arb_kalshi','arb_poly'].includes(c.bot_mode)) {
           modeEl.value = c.bot_mode;
         } else {
           modeEl.value = 'spike_ai';
@@ -1026,7 +1027,7 @@
     const botMode = getEl('bot-mode');
     function updateBotModeUi() {
       const v = botMode.value;
-      getEl('wrap-safe-bet').classList.toggle('hidden', !['spike_ai','moon','multi_confirm'].includes(v));
+      getEl('wrap-safe-bet').classList.toggle('hidden', !['spike_ai','moon','multi_confirm','streak4'].includes(v));
       getEl('wrap-arbitragem-pct').classList.toggle('hidden', !['arb_kalshi','arb_poly'].includes(v));
     }
     botMode.addEventListener('change', updateBotModeUi);
@@ -1327,7 +1328,7 @@
         dry_run: false,
         markets: markets
       };
-      if (mode === 'spike_ai' || mode === 'moon' || mode === 'multi_confirm') {
+      if (mode === 'spike_ai' || mode === 'moon' || mode === 'multi_confirm' || mode === 'streak4') {
         const v = parseFloat(getEl('bot-safe-bet').value);
         body.safe_bet = (!isNaN(v) && v > 0) ? v : 5;
       }
